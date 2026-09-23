@@ -4,12 +4,12 @@ Two skills that turn settled research into ticket files, and ticket files into J
 
 ## Components
 
-| Component | Kind | What |
-|---|---|---|
-| [`draft-ticket`](skills/draft-ticket/README.md) | skill | Writes one markdown file per deliverable, in a fixed ticket structure, with every claim about the code verified against live code and cited by file and line |
-| [`jira-push-ticket`](skills/jira-push-ticket/README.md) | skill | Creates a Jira issue from a draft, turns its relationship sections into real Jira links, rewrites every inbound reference across the repository, and renames the draft to its issue key |
-| [`CONFIG.md`](CONFIG.md) | reference | The per-repository config contract and its init flow |
-| `.mcp.json` | MCP | The Atlassian server both skills reach Jira through |
+| Component                                               | Kind      | What                                                                                                                                                                                    |
+| ------------------------------------------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`draft-ticket`](skills/draft-ticket/README.md)         | skill     | Writes one markdown file per deliverable, in a fixed ticket structure, with every claim about the code verified against live code and cited by file and line                            |
+| [`jira-push-ticket`](skills/jira-push-ticket/README.md) | skill     | Creates a Jira issue from a draft, turns its relationship sections into real Jira links, rewrites every inbound reference across the repository, and renames the draft to its issue key |
+| [`CONFIG.md`](CONFIG.md)                                | reference | The per-repository config contract and its init flow                                                                                                                                    |
+| `.mcp.json`                                             | MCP       | The Atlassian server both skills reach Jira through                                                                                                                                     |
 
 They are separate on purpose. `draft-ticket` never touches a tracker; `jira-push-ticket` never
 writes a draft.
@@ -33,7 +33,12 @@ worth adding to that repository's `.gitignore`.
   "jira": {
     "site": "https://example.atlassian.net",
     "projects": ["PROJ"],
-    "severityToPriority": { "Critical": "Highest", "High": "High", "Medium": "Medium", "Low": "Low" }
+    "severityToPriority": {
+      "Critical": "Highest",
+      "High": "High",
+      "Medium": "Medium",
+      "Low": "Low"
+    }
   },
   "paths": {
     "draftRoot": "devdoc/proposed-tickets",
@@ -70,24 +75,3 @@ server name to config, **not** wrapped in `"mcpServers"` the way a repository's 
 
 Authentication is OAuth, handled by the server on first use — nothing to configure here and no
 secret to store. Expect a sign-in prompt the first time a skill reaches Jira.
-
-A plugin's MCP server is namespaced by the plugin, so its tools arrive as
-`mcp__plugin_skillbox-tickets_atlassian__*`. It cannot collide with a server your repository
-declares in its own `.mcp.json`, whatever that one is called.
-
-The flip side is that the two do not merge either. If your repository already declares the
-Atlassian server, you will be running two of them: two sign-ins, and two copies of every tool.
-Drop one — the repository's entry if this plugin is the only thing using it, the plugin's `.mcp.json`
-if other tooling in that repository depends on the server being declared there.
-
-`draft-ticket` runs without the server. It just cannot verify a cited issue key, and says so in its
-report when it could not.
-
-## Requirements
-
-A git working tree for the drafts: the rename is `git mv`, and the final check is `git status`.
-
-## License
-
-0BSD — use it for anything, no attribution required. See [LICENSE](../../LICENSE)
-at the repository root.
