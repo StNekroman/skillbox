@@ -1,0 +1,17 @@
+{
+  "name": "skillbox-tickets",
+  "version": "1.1.0",
+  "description": "Write settled research into ticket draft files using a fixed ticket structure, then push a draft to Jira as an issue, rewrite every inbound reference across the repository and rename the draft to its issue key. Ships the Atlassian MCP server, and configures itself per repository on first use.",
+  "author": {
+    "name": "Roman Nefedov",
+    "email": "stnekroman@gmail.com"
+  },
+  "license": "0BSD",
+  "keywords": [
+    "jira",
+    "tickets",
+    "atlassian",
+    "drafts",
+    "issue-tracker"
+  ]
+}

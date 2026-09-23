@@ -1,0 +1,17 @@
+{
+  "name": "skillbox-fork",
+  "version": "1.1.0",
+  "description": "Fork a Claude Code conversation into a new session truncated at a chosen point, and navigate the resulting fork tree. Selection is by stable turn id, by offset from the end, or by text matched against both your prompts and the answers.",
+  "author": {
+    "name": "Roman Nefedov",
+    "email": "stnekroman@gmail.com"
+  },
+  "license": "0BSD",
+  "keywords": [
+    "fork",
+    "sessions",
+    "transcript",
+    "navigation",
+    "productivity"
+  ]
+}

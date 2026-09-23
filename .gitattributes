@@ -1,0 +1,3 @@
+# Line endings are decided here, not by each developer's core.autocrlf.
+# Everything in this repository is text and is stored as LF.
+* text=auto eol=lf

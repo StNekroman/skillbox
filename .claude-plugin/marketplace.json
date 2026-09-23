@@ -1,0 +1,25 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "skillbox",
+  "description": "Personal Claude Code extensions: conversation forking, and a ticket-drafting to Jira workflow.",
+  "owner": {
+    "name": "Roman Nefedov",
+    "email": "stnekroman@gmail.com"
+  },
+  "plugins": [
+    {
+      "name": "skillbox-fork",
+      "description": "Fork a conversation at a chosen point; navigate the fork tree.",
+      "author": { "name": "Roman Nefedov" },
+      "category": "productivity",
+      "source": "./plugins/skillbox-fork"
+    },
+    {
+      "name": "skillbox-tickets",
+      "description": "Draft tickets as markdown, then push them to Jira as issues.",
+      "author": { "name": "Roman Nefedov" },
+      "category": "workflow",
+      "source": "./plugins/skillbox-tickets"
+    }
+  ]
+}
