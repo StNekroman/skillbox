@@ -1,7 +1,7 @@
 ---
 description: Fork the current conversation into a new session, truncated at a chosen point.
 allowed-tools: Bash(node:*)
-argument-hint: "<search text | N> [-- <directive for the child>]"
+argument-hint: "<@id | N | search text> [-- <directive for the child>]"
 ---
 
 Fork this conversation into a new session. The child keeps history up to and including the matched exchange; this session is left untouched.
@@ -9,8 +9,10 @@ Fork this conversation into a new session. The child keeps history up to and inc
 Run the script and show its output to the user as-is — it is already formatted:
 
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/fork-at.js" $ARGUMENTS
+node "${CLAUDE_PLUGIN_ROOT}/scripts/fork-at.js" '$ARGUMENTS'
 ```
+
+Pass the arguments as one single-quoted string, exactly as typed, `--` included — the script splits the selector from the directive itself. Search text routinely carries apostrophes, quotes and `$`, so never leave it unquoted; write each `'` inside it as `'\''`.
 
 Selector, taken from `$ARGUMENTS` before any `--`:
 
@@ -27,6 +29,6 @@ Anything after `--` becomes the child's first instruction, and the forked sessio
 
 With no directive the child is told only that it was forked and that no task has been given yet, so it acknowledges and waits. Suggest a directive when the user clearly knows what the fork is for; do not add one yourself, since a fork usually exists because the plan is still being decided.
 
-If the script exits non-zero, relay its error and stop. The no-match error lists candidate turns with offsets — tell the user to retry with one of those numbers rather than guessing different search text.
+If the script exits non-zero, relay its error and stop. The no-match and ambiguous errors list candidate turns with their `@id` — tell the user to retry with one of those rather than guessing different search text.
 
 On success, confirm in one line: the child session id, that it is open in a new window, and that this session is unchanged.

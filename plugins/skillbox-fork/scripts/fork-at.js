@@ -9,8 +9,21 @@ const crypto = require('crypto');
 const { spawnSync } = require('child_process');
 
 const G = require('./lib/fork-graph');
-const { configRoot, findTranscript, readRows, isHumanPrompt, promptText, preview, openTerminal, cleanEnv, claudeExe, resumeCommand } =
-  G;
+const {
+  CliError,
+  runMain,
+  configRoot,
+  findTranscript,
+  readRows,
+  isHumanPrompt,
+  promptText,
+  preview,
+  openTerminal,
+  cleanEnv,
+  claudeExe,
+  needsShell,
+  resumeCommand,
+} = G;
 
 // A slash-command turn is stored as a plain string, not a content array, so it
 // escapes the content-block noise filter. Left alone, the wrapper tags end up
@@ -189,8 +202,7 @@ function note(msg) {
   console.log(`${'note'.padEnd(10)}${msg}`);
 }
 function fail(msg) {
-  console.error(`Error: ${msg}`);
-  process.exit(1);
+  throw new CliError(msg);
 }
 
 // A window centred on the match, so an answer hit shows the words around it
@@ -212,44 +224,44 @@ function snippet(raw, norm, needle, width) {
 // Takes explicit {uuid, offset} pairs: the offset must be the real position in
 // the selectable list, not an index into whatever subset is being displayed.
 function pickHint(entries) {
-  if (!entries.length) return;
+  if (!entries.length) return [];
   const e = entries[Math.min(1, entries.length - 1)];
-  console.error('');
-  console.error(`pick one:   /fork-at @${e.uuid.slice(0, 8)}       stable, always this turn`);
-  console.error(
+  return [
+    '',
+    `pick one:   /fork-at @${e.uuid.slice(0, 8)}       stable, always this turn`,
     `            /fork-at ${String(e.offset).padEnd(14)}counts back from the end, shifts if the conversation grows`,
-  );
+  ];
 }
 
 function failAmbiguous(needle, hits, sel, texts) {
-  console.error(`Error: "${needle}" matches ${hits.length} turns — pick one.`);
-  console.error('');
+  const lines = [`"${needle}" matches ${hits.length} turns — pick one.`, ''];
   for (const h of [...hits].reverse()) {
     const n = sel.length - 1 - h.i;
     const t = texts[h.e.ai];
-    const kind = h.where === 'both' ? 'both' : h.where;
     const body = h.inPrompt ? snippet(t.prompt, t.pN, needle, 58) : snippet(t.answer, t.aN, needle, 58);
-    console.error(`  ${String(n).padStart(2)}  @${h.e.uuid.slice(0, 8)}  ${kind.padEnd(11)} ${body}`);
+    lines.push(`  ${String(n).padStart(2)}  @${h.e.uuid.slice(0, 8)}  ${h.where.padEnd(11)} ${body}`);
   }
-  pickHint(hits.map((h) => ({ uuid: h.e.uuid, offset: sel.length - 1 - h.i })).reverse());
-  process.exit(1);
+  lines.push(...pickHint(hits.map((h) => ({ uuid: h.e.uuid, offset: sel.length - 1 - h.i })).reverse()));
+  fail(lines.join('\n'));
 }
 
 function failNoMatch(needle, sel, texts) {
-  console.error(`Error: nothing matches "${needle}" — searched your prompts and the answers.`);
-  console.error('');
-  console.error('turns you can select (newest first):');
+  const lines = [
+    `nothing matches "${needle}" — searched your prompts and the answers.`,
+    '',
+    'turns you can select (newest first):',
+  ];
   const shown = sel.slice(-12).reverse();
   shown.forEach((e, i) => {
-    console.error(`  ${String(i).padStart(2)}  @${e.uuid.slice(0, 8)}  "${preview(texts[e.ai].prompt, 62)}"`);
+    lines.push(`  ${String(i).padStart(2)}  @${e.uuid.slice(0, 8)}  "${preview(texts[e.ai].prompt, 62)}"`);
     const ans = texts[e.ai].answer;
-    if (ans) console.error(`                   ${preview(ans, 62)}`);
+    if (ans) lines.push(`                   ${preview(ans, 62)}`);
   });
-  pickHint(shown.map((e, i) => ({ uuid: e.uuid, offset: i })));
-  process.exit(1);
+  lines.push(...pickHint(shown.map((e, i) => ({ uuid: e.uuid, offset: i }))));
+  fail(lines.join('\n'));
 }
 
-// ---------------------------------------------------------------- main
+// ---------------------------------------------------------------- invocation
 
 function parseSelector(raw) {
   if (raw === '') return null;
@@ -258,28 +270,80 @@ function parseSelector(raw) {
   return { kind: 'text', value: raw };
 }
 
-function main() {
-  const argv = process.argv.slice(2);
-  const flags = new Set();
-  const selectorParts = [];
-  let directive = null;
+// Everything before the first standalone `--` is the selector, everything
+// after is the directive. Flags are recognised only on the selector side, so a
+// directive may say "--dry-run" and mean it as text.
+//
+// The arguments are joined and re-split rather than read one by one. The
+// slash command passes them as a single quoted string — search text is full of
+// apostrophes, which unquoted would break the shell — and in that string `--`
+// is no longer an argument of its own. Joining first makes one quoted string
+// and separately passed words parse the same.
+function parseArgs(argv) {
+  const raw = argv.join(' ');
+  const sep = /(^|\s)--(\s|$)/.exec(raw);
+  const head = sep ? raw.slice(0, sep.index) : raw;
+  const directive = sep ? raw.slice(sep.index + sep[0].length).trim() || null : null;
 
-  for (let i = 0; i < argv.length; i++) {
-    const a = argv[i];
-    if (a === '--') {
-      directive =
-        argv
-          .slice(i + 1)
-          .join(' ')
-          .trim() || null;
-      break;
-    }
-    if (a === '--dry-run' || a === '--no-open') {
-      flags.add(a);
-      continue;
-    }
-    selectorParts.push(a);
+  const flags = new Set();
+  const words = [];
+  for (const w of head.split(/\s+/).filter(Boolean)) {
+    if (w === '--dry-run' || w === '--no-open') flags.add(w);
+    else words.push(w);
   }
+  return { flags, selector: parseSelector(words.join(' ')), directive };
+}
+
+// -p needs a prompt, so a fork with no directive still costs one turn. That
+// turn must not start work: the fork usually exists because the plan is still
+// being argued about, and in auto mode an instruction like "continue" is
+// enough for the child to begin editing files on its own.
+// Phrased as "nothing asked yet", never as a prohibition. Wording like "do
+// not use any tools" reads as a standing rule for the whole session, so the
+// child would carry it forward and refuse to work later.
+const IDLE = ['Session forked from the conversation above, at the point shown.', "Wait for next user's input."].join(
+  '\n',
+);
+
+function childPrompt(parent, cutUuid, directive) {
+  return `[fork] parent=${parent} cut=${cutUuid}\n\n${directive || IDLE}`;
+}
+
+// The headless call that creates the child.
+//
+// The prompt is multi-line and carries whatever the directive says, so it
+// cannot survive a shell: Node joins the arguments with spaces and quotes
+// nothing, and cmd.exe cannot carry a newline in an argument at all. When a
+// shell is unavoidable, the prompt goes on stdin — `claude -p` reads it from
+// there when no prompt argument is given — and every argument left is a flag
+// or an id, which no shell can mangle. They are joined into one command string
+// here, because Node deprecates passing an argument list alongside a shell.
+function buildInvocation({ exe, parent, child, cut, prompt, platform = process.platform }) {
+  const shell = needsShell(exe, platform);
+  const args = [
+    '-p',
+    '--resume',
+    parent,
+    '--fork-session',
+    '--session-id',
+    child,
+    '--resume-session-at',
+    cut.cutUuid,
+    ...(cut.dropsTurnUuid ? ['--resume-drops-turn', cut.dropsTurnUuid] : []),
+    '--name',
+    `fork-${parent.slice(0, 8)}`,
+  ];
+  if (shell) {
+    const quoted = /\s/.test(exe) ? `"${exe}"` : exe;
+    return { command: [quoted, ...args].join(' '), args: [], input: prompt, shell };
+  }
+  return { command: exe, args: [...args, prompt], input: null, shell };
+}
+
+// ---------------------------------------------------------------- main
+
+function main() {
+  const { flags, selector, directive } = parseArgs(process.argv.slice(2));
 
   const root = configRoot();
   const parent = process.env.CLAUDE_CODE_SESSION_ID;
@@ -291,7 +355,6 @@ function main() {
     fail(`no transcript for session ${parent} under ${path.join(root, 'projects')}`);
   }
 
-  const selector = parseSelector(selectorParts.join(' ').trim());
   const rows = readRows(transcript);
   const cut = resolveCut(rows, selector);
   const child = crypto.randomUUID();
@@ -312,45 +375,20 @@ function main() {
   say('cut', cut.cutUuid);
   say('child', child);
 
-  // -p needs a prompt, so a fork with no directive still costs one turn. That
-  // turn must not start work: the fork usually exists because the plan is still
-  // being argued about, and in auto mode an instruction like "continue" is
-  // enough for the child to begin editing files on its own.
-  // Phrased as "nothing asked yet", never as a prohibition. Wording like "do
-  // not use any tools" reads as a standing rule for the whole session, so the
-  // child would carry it forward and refuse to work later.
-  const IDLE = ['Session forked from the conversation above, at the point shown.', "Wait for next user's input."].join(
-    '\n',
-  );
-
-  const body = directive || IDLE;
-  const prompt = `[fork] parent=${parent} cut=${cut.cutUuid}\n\n${body}`;
+  const prompt = childPrompt(parent, cut.cutUuid, directive);
   say('directive', directive ? `"${preview(directive, 56)}"` : 'none — child opens idle and waits for you');
 
-  const exe = claudeExe();
-  const args = [
-    '-p',
-    '--resume',
-    parent,
-    '--fork-session',
-    '--session-id',
-    child,
-    '--resume-session-at',
-    cut.cutUuid,
-    ...(cut.dropsTurnUuid ? ['--resume-drops-turn', cut.dropsTurnUuid] : []),
-    '--name',
-    `fork-${parent.slice(0, 8)}`,
-    prompt,
-  ];
+  const inv = buildInvocation({ exe: claudeExe(), parent, child, cut, prompt });
 
   if (flags.has('--dry-run')) {
     // The prompt is shown separately: it contains newlines, and rendering it
     // inline would produce a command that looks copy-pasteable but would send
     // a literal backslash-n.
-    const shown = args.slice(0, -1).map((a) => (/\s/.test(a) ? `"${a}"` : a));
+    const shown = (inv.input === null ? inv.args.slice(0, -1) : inv.args).map((a) => (/\s/.test(a) ? `"${a}"` : a));
     console.log('');
     console.log('would run');
-    console.log(`  ${exe} ${shown.join(' ')} <prompt>`);
+    const stdin = inv.input === null ? '<prompt>' : '< prompt on stdin';
+    console.log(`  ${[inv.command, ...shown, stdin].join(' ')}`);
     console.log('');
     console.log('prompt');
     for (const line of prompt.split('\n')) console.log(`  ${line}`);
@@ -360,14 +398,15 @@ function main() {
   console.log('');
   console.log('creating fork…  (one headless turn over the kept history)');
   const started = Date.now();
-  const res = spawnSync(exe, args, {
+  const opts = {
     encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe'],
-    shell: exe === 'claude',
+    input: inv.input === null ? undefined : inv.input,
+    stdio: [inv.input === null ? 'ignore' : 'pipe', 'pipe', 'pipe'],
     env: cleanEnv(),
-  });
+  };
+  const res = inv.shell ? spawnSync(inv.command, { ...opts, shell: true }) : spawnSync(inv.command, inv.args, opts);
 
-  if (res.error) fail(`could not run ${exe}: ${res.error.message}`);
+  if (res.error) fail(`could not run ${inv.command}: ${res.error.message}`);
   if (res.status !== 0) {
     console.error((res.stderr || res.stdout || '').trim());
     fail(`claude exited ${res.status} — no fork created, nothing recorded`);
@@ -404,4 +443,17 @@ function main() {
   say('opened', opened || 'nothing — no terminal found; run the resume command above');
 }
 
-main();
+if (require.main === module) runMain(main);
+
+module.exports = {
+  commandOf,
+  displayText,
+  normalize,
+  turnTexts,
+  resolveCut,
+  snippet,
+  parseSelector,
+  parseArgs,
+  childPrompt,
+  buildInvocation,
+};

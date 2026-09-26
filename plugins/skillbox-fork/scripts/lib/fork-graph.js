@@ -10,6 +10,23 @@ const NOISE_TAGS = /^<(ide_opened_file|ide_selection|system-reminder|command-nam
 const MARKER = /\[fork\]\s+parent=([0-9a-f-]{36})\s+cut=([0-9a-f-]{36})/;
 const CACHE_VERSION = 2;
 
+// ---------------------------------------------------------------- errors
+
+// A failure meant for the person running the script. Thrown rather than exiting
+// on the spot, so the logic can be exercised from tests; runMain turns it into
+// the printed error and exit code 1. Anything else propagates as a crash.
+class CliError extends Error {}
+
+function runMain(main) {
+  try {
+    main();
+  } catch (e) {
+    if (!(e instanceof CliError)) throw e;
+    console.error(`Error: ${e.message}`);
+    process.exit(1);
+  }
+}
+
 // ---------------------------------------------------------------- transcript
 
 function configRoot() {
@@ -103,18 +120,24 @@ function cacheEntry(cache, file) {
 // design conversation, this script's own output quoted in a tool result —
 // contains the same string and would otherwise register as a fork of itself.
 // A cheap substring probe still skips non-fork transcripts without parsing.
+//
+// The LAST signal wins, not the first. A fork's transcript opens with a copy of
+// its parent's history, so a fork of a fork carries its parent's own marker or
+// stamp ahead of its own. The first match names the grandparent.
 function scanForEdge(file, child) {
   let text;
   try { text = fs.readFileSync(file, 'utf8'); } catch { return null; }
   if (!text.includes('"forkedFrom"') && !text.includes('[fork] parent=')) return null;
 
+  let found = null;
   for (const line of text.split('\n')) {
     if (!line.trim()) continue;
     let d;
     try { d = JSON.parse(line); } catch { continue; }
 
     if (d.forkedFrom && d.forkedFrom.sessionId && d.forkedFrom.sessionId !== child) {
-      return { parent: d.forkedFrom.sessionId, cut: d.forkedFrom.messageUuid, source: 'branch' };
+      found = { parent: d.forkedFrom.sessionId, cut: d.forkedFrom.messageUuid, source: 'branch' };
+      continue;
     }
     if (d.type !== 'user' || d.isSidechain === true) continue;
     const c = d.message && d.message.content;
@@ -122,10 +145,10 @@ function scanForEdge(file, child) {
     const m = MARKER.exec(promptText(d).trim());
     // Anchored at position 0: the injected fork prompt opens with the marker.
     if (m && m.index === 0 && m[1] !== child) {
-      return { parent: m[1], cut: m[2], source: 'marker' };
+      found = { parent: m[1], cut: m[2], source: 'marker' };
     }
   }
-  return null;
+  return found;
 }
 
 // child -> { parent, cut, source }. Ledger first, then the transcripts
@@ -250,6 +273,14 @@ function claudeExe() {
   return process.env.CLAUDE_CODE_EXECPATH || 'claude';
 }
 
+// Whether spawning `exe` needs a shell. Only Windows does, and only for a name
+// that is not a real executable: a bare `claude` may resolve to an npm
+// `claude.cmd` shim, and a .cmd or .bat file cannot be started without cmd.exe.
+// Everywhere else the binary is spawned directly, with no shell to quote for.
+function needsShell(exe, platform = process.platform) {
+  return platform === 'win32' && !/\.exe$/i.test(exe);
+}
+
 // A resume command for a terminal we spawn ourselves. It names the resolved
 // binary, because the window we open inherits no PATH guarantee from us, and
 // quotes it only when the path carries a space, so the bare fallback stays
@@ -296,6 +327,8 @@ function openTerminal(cmd) {
 
 module.exports = {
   MARKER,
+  CliError,
+  runMain,
   configRoot,
   listTranscripts,
   findTranscript,
@@ -312,5 +345,6 @@ module.exports = {
   openTerminal,
   cleanEnv,
   claudeExe,
+  needsShell,
   resumeCommand,
 };

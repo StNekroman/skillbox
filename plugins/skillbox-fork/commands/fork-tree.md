@@ -7,8 +7,10 @@ argument-hint: "[session-id | search text] [--full]"
 Show where this conversation sits in its fork tree. Run the script and show its output as-is — it is already formatted:
 
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/fork-tree.js" $ARGUMENTS
+node "${CLAUDE_PLUGIN_ROOT}/scripts/fork-tree.js" '$ARGUMENTS'
 ```
+
+Pass the arguments as one single-quoted string, exactly as typed — the script splits out the flags itself. Title search text may carry apostrophes, so never leave it unquoted; write each `'` inside it as `'\''`.
 
 Default focus is the current session; an argument focuses another one (session id, id prefix, or text matched against titles). `--full` widens the view from the ancestor spine to the whole connected tree, including siblings.
 

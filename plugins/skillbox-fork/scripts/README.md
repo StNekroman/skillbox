@@ -8,6 +8,7 @@ files in `../commands/` are thin wrappers that invoke these through `${CLAUDE_PL
 | `fork-at.js` | Resolves a cut point, then launches one headless turn over the kept history to create the child session |
 | `fork-tree.js` | Renders the fork tree; interactive picker when run from a TTY |
 | `lib/fork-graph.js` | Shared: transcript reading, edge collection, session metadata, terminal launching |
+| `test/` | Unit and end-to-end tests, run with Node's built-in runner |
 
 Run them directly for things a slash command cannot do — `fork-tree.js` from a real terminal gets
 arrow-key navigation and switches session in place, which needs a TTY:
@@ -18,6 +19,21 @@ node fork-at.js --dry-run "some phrase"
 ```
 
 `--dry-run` prints the `claude` invocation and the child's first prompt without creating anything.
+
+## Tests
+
+No dependencies — Node's built-in runner. From the repository root:
+
+```bash
+node --test 'plugins/skillbox-fork/scripts/test/*.test.js'
+```
+
+Every test builds synthetic transcripts in a throwaway `CLAUDE_CONFIG_DIR`, so none reads your real
+sessions. `cli.test.js` runs the scripts as the slash commands do, but only with `--dry-run` or an
+invalid `--open`, so nothing is launched and no model is called.
+
+The scripts are importable for this reason: `main()` runs only under `require.main === module`, and a
+failure throws `CliError` instead of exiting, which `runMain` turns into the printed error.
 
 ## Environment
 

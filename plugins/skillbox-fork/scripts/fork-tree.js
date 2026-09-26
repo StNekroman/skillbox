@@ -34,8 +34,7 @@ function age(ts) {
 }
 
 function fail(msg) {
-  console.error(`Error: ${msg}`);
-  process.exit(1);
+  throw new G.CliError(msg);
 }
 
 // ---------------------------------------------------------------- graph
@@ -200,11 +199,11 @@ function resolveFocus(root, cache, arg) {
     const byTitle = all.filter((t) => G.sessionMeta(t.file, cache).title.toLowerCase().includes(needle));
     if (byTitle.length === 1) return byTitle[0].sessionId;
     if (byTitle.length > 1) {
-      console.error(`"${arg}" matches ${byTitle.length} sessions:`);
+      const lines = [`"${arg}" matches ${byTitle.length} sessions:`];
       for (const t of byTitle.slice(0, 10)) {
-        console.error(`  ${t.sessionId.slice(0, 8)}  ${G.preview(G.sessionMeta(t.file, cache).title, 60)}`);
+        lines.push(`  ${t.sessionId.slice(0, 8)}  ${G.preview(G.sessionMeta(t.file, cache).title, 60)}`);
       }
-      process.exit(1);
+      fail(lines.join('\n'));
     }
     fail(`no session matches "${arg}"`);
   }
@@ -242,7 +241,12 @@ function buildForest(edges, kids) {
 function openSession(id, inPlace) {
   const exe = G.claudeExe();
   if (inPlace) {
-    const res = spawnSync(exe, ['--resume', id], { stdio: 'inherit', shell: exe === 'claude', env: G.cleanEnv() });
+    // Through a shell, one pre-joined string: Node deprecates an argument list
+    // alongside a shell, and a session id needs no quoting.
+    const opts = { stdio: 'inherit', env: G.cleanEnv() };
+    const res = G.needsShell(exe)
+      ? spawnSync(`${/\s/.test(exe) ? `"${exe}"` : exe} --resume ${id}`, { ...opts, shell: true })
+      : spawnSync(exe, ['--resume', id], opts);
     process.exit(res.status === null ? 1 : res.status);
   }
   const opened = G.openTerminal(G.resumeCommand(id));
@@ -306,8 +310,10 @@ function interactive(rows, startIdx) {
 
 // ---------------------------------------------------------------- main
 
+// Joined and re-split, so the slash command's single quoted string and
+// separately passed words parse the same. See parseArgs in fork-at.js.
 function main() {
-  const argv = process.argv.slice(2);
+  const argv = process.argv.slice(2).join(' ').split(/\s+/).filter(Boolean);
   const flags = new Set();
   let openIdx = null;
   const words = [];
@@ -370,4 +376,13 @@ function main() {
   rows.forEach((r, i) => console.log(renderLine(r, r.cycle ? null : i + 1)));
 }
 
-main();
+if (require.main === module) G.runMain(main);
+
+module.exports = {
+  age,
+  invert,
+  ancestorsOf,
+  buildRows,
+  buildForest,
+  resolveFocus,
+};
