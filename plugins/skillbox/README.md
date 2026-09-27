@@ -2,17 +2,18 @@
 
 The core of the family: everything here needs nothing beyond Node. Fork a Claude Code conversation
 into a new session truncated at a chosen point and navigate the resulting tree; write settled
-research into ticket draft files.
+research into ticket draft files, and settled architecture decisions into ADRs.
 
 ## Components
 
-| Component                                       | Kind      | What                                                                                       |
-| ----------------------------------------------- | --------- | ------------------------------------------------------------------------------------------ |
-| `/skillbox:fork-at`                             | command   | Fork the conversation at a chosen turn                                                     |
-| `/skillbox:fork-tree`                           | command   | Show where this session sits among its forks                                               |
+| Component                                       | Kind      | What                                                                                        |
+| ----------------------------------------------- | --------- | ------------------------------------------------------------------------------------------- |
+| `/skillbox:fork-at`                             | command   | Fork the conversation at a chosen turn                                                      |
+| `/skillbox:fork-tree`                           | command   | Show where this session sits among its forks                                                |
 | [`draft-ticket`](skills/draft-ticket/README.md) | skill     | Writes one markdown file per deliverable, in a fixed ticket structure, every claim verified |
-| [`CONFIG.md`](CONFIG.md)                        | reference | The per-repository ticket config contract and its init flow                                |
-| [`scripts/`](scripts/README.md)                 | node      | The fork implementation, plus env vars and internals                                       |
+| [`to-adr`](skills/to-adr/README.md)             | skill     | Records a settled architecture decision as an ADR — and writes nothing when there is none   |
+| [`CONFIG.md`](CONFIG.md)                        | reference | The per-repository config contract and its init flow                                        |
+| [`scripts/`](scripts/README.md)                 | node      | The fork implementation, plus env vars and internals                                        |
 
 Commands are documented here rather than beside their files: every `.md` in `commands/` registers
 as a command, so a README in there would appear as a stray `/readme`.
@@ -88,6 +89,19 @@ asked for. Commit the file so your team shares one answer.
 [The configuration reference](CONFIG.md) has the schema and the init flow;
 [the skill's README](skills/draft-ticket/README.md) has what it produces and the rule that matters
 most.
+
+## to-adr
+
+A decision the conversation settled becomes an architecture decision record under the ADR
+directory named in the same `.skillbox/tickets.json`: the decision, the alternatives weighed and
+why each lost, and what it costs. Most conversations settle nothing that deserves one, and then the
+skill writes nothing and says why — an ADR directory stays useful only while every record in it
+matters.
+
+On first use it finds the ADR directory the repository already has, or asks where records should
+go. `paths.adrTemplate` points it at the repository's own ADR template instead of its built-in one.
+[The skill's README](skills/to-adr/README.md) has the bar a decision must clear and what it never
+invents.
 
 ## Requirements
 

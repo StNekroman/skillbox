@@ -13,10 +13,10 @@ sign-in, or a runtime beyond Node gets its own addon plugin; everything else liv
 Names, descriptions and commands of every installed plugin cost context on every turn, while an
 MCP server costs nothing until used — so an addon is a unit someone can decline, not a folder.
 
-| Plugin                                               | What it does                                                                                  | Components                                                           |
-| ---------------------------------------------------- | --------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| [**skillbox**](plugins/skillbox/README.md)           | Core. Fork a conversation at a chosen point, navigate the fork tree, draft tickets as markdown | 2 commands, 1 skill, [3 scripts](plugins/skillbox/scripts/README.md) |
-| [**skillbox-jira**](plugins/skillbox-jira/README.md) | Jira addon. Push a ticket draft to Jira as an issue                                           | 1 skill, 1 MCP server. Depends on `skillbox`                         |
+| Plugin                                               | What it does                                                                                            | Components                                                            |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| [**skillbox**](plugins/skillbox/README.md)           | Core. Fork a conversation at a chosen point, navigate the fork tree, draft tickets and ADRs as markdown | 2 commands, 2 skills, [3 scripts](plugins/skillbox/scripts/README.md) |
+| [**skillbox-jira**](plugins/skillbox-jira/README.md) | Jira addon. Push a ticket draft to Jira as an issue                                                     | 1 skill, 1 MCP server. Depends on `skillbox`                          |
 
 Drilling in:
 
@@ -25,6 +25,7 @@ Drilling in:
 | [`skillbox:fork-at`](plugins/skillbox/README.md#fork-at)                                    | Fork the conversation at a chosen turn; the parent is untouched     |
 | [`skillbox:fork-tree`](plugins/skillbox/README.md#fork-tree)                                | Show where this session sits among its forks                        |
 | [`skillbox:draft-ticket`](plugins/skillbox/skills/draft-ticket/README.md)                   | Settled research becomes one ticket file per deliverable            |
+| [`skillbox:to-adr`](plugins/skillbox/skills/to-adr/README.md)                               | A settled architecture decision becomes an ADR; anything less, none |
 | [`skillbox-jira:jira-push-ticket`](plugins/skillbox-jira/skills/jira-push-ticket/README.md) | A draft becomes a real issue, and the repository is left consistent |
 
 **Documentation convention.** A `SKILL.md` or a command's `.md` is written for the model — imperative
@@ -52,7 +53,7 @@ claude plugin marketplace add /path/to/your/clone
 ```
 
 Commands and skills arrive namespaced: `/skillbox:fork-at`, `skillbox:draft-ticket`,
-`skillbox-jira:jira-push-ticket`.
+`skillbox:to-adr`, `skillbox-jira:jira-push-ticket`.
 
 To iterate on a plugin without installing it, load it for a single session:
 

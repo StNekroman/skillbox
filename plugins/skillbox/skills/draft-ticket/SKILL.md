@@ -2,7 +2,7 @@
 name: draft-ticket
 description: Write or update a ticket draft as a markdown file under the repository’s ticket-draft directory, using a fixed ticket structure. Use when chat research has settled enough to be flushed into one or more ticket files; do not use to create, edit, transition, or comment on items in an issue tracker.
 metadata:
-  prompt-version: "2026-09-27.2"
+  prompt-version: "2026-09-27.3"
 ---
 
 # Draft a Ticket
@@ -16,10 +16,11 @@ The output is a markdown file in this repository. It may later be copied into an
 Read `.skillbox/tickets.json` under the repository root before writing anything. It supplies
 `paths.draftRoot`, `paths.docRoots`, `domainNotes`, and `jira.site` for citing issues.
 
-If it is not there, run the init described in [the configuration reference](../../CONFIG.md),
-then carry on with the request. If it is there but has no `jira.site` while a ticket in this
-conversation carries a Jira key, ask for the site and add it, as the same reference describes.
-Either way Jira comes up only when a key is in play — writing a draft does not need a tracker.
+If it is not there, or it has no `paths.draftRoot` — `to-adr` may have created it first — run the
+init described in [the configuration reference](../../CONFIG.md), then carry on with the request.
+If it is there but has no `jira.site` while a ticket in this conversation carries a Jira key, ask
+for the site and add it, as the same reference describes. Either way Jira comes up only when a key
+is in play — writing a draft does not need a tracker.
 
 ## Accepted input
 
