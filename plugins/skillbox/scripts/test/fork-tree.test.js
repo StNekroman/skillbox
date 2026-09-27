@@ -43,7 +43,7 @@ describe('buildRows', () => {
     ]);
   });
 
-  test('--full: the whole tree from the root, siblings included', () => {
+  test('--all: the whole tree from the root, siblings included', () => {
     assert.deepEqual(shape(T.buildRows(edges, kids, 'f', true)), [
       'r',
       '└─ p',

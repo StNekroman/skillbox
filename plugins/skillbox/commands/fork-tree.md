@@ -1,7 +1,7 @@
 ---
 description: Show the fork tree around this session — ancestors above, descendants below.
 allowed-tools: Bash(node:*)
-argument-hint: "[session-id | search text] [--full]"
+argument-hint: "[session-id | search text] [--all] [--full]"
 ---
 
 Show where this conversation sits in its fork tree. Run the script and show its output as-is — it is already formatted:
@@ -12,7 +12,7 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/fork-tree.js" '$ARGUMENTS'
 
 Pass the arguments as one single-quoted string, exactly as typed — the script splits out the flags itself. Title search text may carry apostrophes, so never leave it unquoted; write each `'` inside it as `'\''`.
 
-Default focus is the current session; an argument focuses another one (session id, id prefix, or text matched against titles). `--full` widens the view from the ancestor spine to the whole connected tree, including siblings.
+Default focus is the current session; an argument focuses another one (session id, id prefix, or text matched against titles). `--all` widens the view from the ancestor spine to the whole connected tree, including siblings. `--full` prints whole session ids in place of the 8-character hash.
 
 Run from a plain shell there is no current session, so it lists every fork tree instead of guessing which one you are in.
 
@@ -22,4 +22,4 @@ After showing the tree, offer the sessions as a selector with AskUserQuestion so
 
 On a pick, run `--open <n>` for that node and report the result. Picking the node marked `(you are here)` opens nothing: the script says so, and that is the whole result.
 
-True arrow-key navigation needs a TTY, which a slash command does not have; that requires running `node "${CLAUDE_PLUGIN_ROOT}/scripts/fork-tree.js"` directly in a terminal. Mention that only if the user wants in-place switching rather than a new window.
+A slash command cannot switch the session it runs in; only the user typing `/resume <full-session-id>` does that, and `/resume` accepts nothing shorter than the whole id — not the 8-character hash, and not the name of a fork made by `fork-at`, which Claude Code hides from name lookup. If the user wants to switch in place rather than open a window, rerun with `--full` if the ids are not already whole, and give them the exact `/resume <id>` line to type. True arrow-key navigation needs a TTY, which a slash command does not have; that requires running `node "${CLAUDE_PLUGIN_ROOT}/scripts/fork-tree.js"` directly in a terminal.

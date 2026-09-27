@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 // Renders the fork tree around a session: ancestors up to the root, descendants all the way down.
-// Usage: node <plugin>/scripts/fork-tree.js [session-id | search text] [--full] [--open N] [--no-color]
+// Usage: node <plugin>/scripts/fork-tree.js [session-id | search text] [--all] [--full] [--open N] [--no-color]
+//        --all widens the view to the whole tree, siblings included; --full prints full
+//        session ids instead of the 8-character hash, ready for /resume.
 //        Run directly in a terminal for an interactive picker.
 
 const fs = require('fs');
@@ -14,6 +16,10 @@ const G = require('./lib/fork-graph');
 
 const TTY = Boolean(process.stdout.isTTY && process.stdin.isTTY);
 let COLOR = TTY && !process.env.NO_COLOR;
+// The 8-character hash is enough to tell rows apart, but not to resume: both
+// `/resume` and `claude --resume` take only the full id or an exact name.
+// --full prints the id whole so a row can be pasted straight into either.
+let FULL_IDS = false;
 const c = {
   dim: (s) => (COLOR ? `\x1b[2m${s}\x1b[0m` : s),
   bold: (s) => (COLOR ? `\x1b[1m${s}\x1b[0m` : s),
@@ -139,7 +145,7 @@ function decorate(rows, root, cache, edges, focus, live, focusCwd) {
       ...r,
       isFocus: r.id === focus,
       isHere: r.id === here(),
-      short: r.id.slice(0, 8),
+      label: FULL_IDS ? r.id : r.id.slice(0, 8),
       title: G.preview(meta.title, 52) || '(untitled)',
       turns: meta.turns ? `[${meta.turns} turn${meta.turns === 1 ? '' : 's'}]` : '',
       age: age(meta.lastTs),
@@ -162,7 +168,7 @@ function layout(rows) {
     // indentation so the shape stays readable, while everything after it lines
     // up. Padding the lines separately would align the hashes and flatten the
     // tree.
-    tree: body.reduce((m, r) => Math.max(m, (r.prefix || '').length + r.short.length), 0),
+    tree: body.reduce((m, r) => Math.max(m, (r.prefix || '').length + r.label.length), 0),
     title: widest('title'),
     turns: widest('turns'),
     age: widest('age'),
@@ -177,7 +183,7 @@ function renderLine(r, index, selected) {
   const line = [
     lead,
     r.isFocus ? '● ' : '  ',
-    `${r.prefix}${r.short}`.padEnd(W.tree),
+    `${r.prefix}${r.label}`.padEnd(W.tree),
     '  ',
     r.title.padEnd(W.title),
     '  ',
@@ -352,7 +358,7 @@ function main() {
   const words = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === '--full' || a === '--no-color' || a === '--static') {
+    if (a === '--all' || a === '--full' || a === '--no-color' || a === '--static') {
       flags.add(a);
       continue;
     }
@@ -363,6 +369,7 @@ function main() {
     words.push(a);
   }
   if (flags.has('--no-color')) COLOR = false;
+  if (flags.has('--full')) FULL_IDS = true;
 
   const root = G.configRoot();
   G.sweepPending(root);
@@ -379,7 +386,7 @@ function main() {
   const focusFile = focus && G.findTranscript(root, focus);
   const focusCwd = focusFile ? G.sessionMeta(focusFile, cache).cwd : null;
 
-  const raw = focus ? buildRows(edges, kids, focus, flags.has('--full')) : buildForest(edges, kids);
+  const raw = focus ? buildRows(edges, kids, focus, flags.has('--all')) : buildForest(edges, kids);
   if (!raw.length) {
     G.saveCache(root, cache);
     console.log('no forks recorded yet');

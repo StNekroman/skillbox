@@ -61,11 +61,13 @@ counting them would both pollute text search and shift every number.
 ## fork-tree
 
 ```
-/skillbox:fork-tree [session-id | search text] [--full]
+/skillbox:fork-tree [session-id | search text] [--all] [--full]
 ```
 
-Default focus is the current session; an argument focuses another one. `--full` widens the view from
-the ancestor spine to the whole connected tree, including siblings.
+Default focus is the current session; an argument focuses another one. `--all` widens the view from
+the ancestor spine to the whole connected tree, including siblings. `--full` prints whole session ids
+in place of the 8-character hash — `/resume` inside a session takes only a whole id or an exact name,
+so this is the form to paste there.
 
 Run from a plain shell there is no current session, so it lists every fork tree instead of guessing.
 Run in a real terminal it gets arrow-key navigation and can switch session in place — that needs a

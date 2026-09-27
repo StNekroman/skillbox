@@ -337,6 +337,36 @@ describe('fork-tree.js', () => {
     assert.match(lines[1], /^\s+2\s+● └─ bbbb0000\s+Child session.*\(you are here\)$/);
   });
 
+  test('--full prints whole session ids, still aligned as one column', (t) => {
+    const { root } = tree(t);
+    const res = run('fork-tree.js', ['--static --no-color --full'], { CLAUDE_CONFIG_DIR: root, CLAUDE_CODE_SESSION_ID: CHILD });
+    assert.equal(res.status, 0, res.stderr);
+    const lines = res.stdout.split('\n').filter(Boolean);
+    assert.equal(lines.length, 2);
+    assert.match(lines[0], new RegExp(`^\\s+1\\s+${PARENT}\\s+Parent session\\s+\\[1 turn\\]`));
+    assert.match(lines[1], new RegExp(`^\\s+2\\s+● └─ ${CHILD}\\s+Child session.*\\(you are here\\)$`));
+    // The title column starts where the widest id column ends, on both rows.
+    assert.equal(lines[0].indexOf('Parent session'), lines[1].indexOf('Child session'));
+  });
+
+  test('--all widens a focused view to siblings', (t) => {
+    const { root, project } = tree(t);
+    const SIBLING = 'cccc0000-0000-4000-8000-000000000003';
+    const tr = new Transcript(0, project);
+    tr.turn('hello', 'hi');
+    tr.meta({ type: 'ai-title', aiTitle: 'Sibling session' });
+    writeTranscript(root, SIBLING, tr);
+    writeLedger(root, [[PARENT, CHILD], [PARENT, SIBLING]]);
+    const env = { CLAUDE_CONFIG_DIR: root, CLAUDE_CODE_SESSION_ID: CHILD };
+    const focused = run('fork-tree.js', ['--static'], env);
+    assert.equal(focused.status, 0, focused.stderr);
+    // A sibling is not on the spine and has no children, so the focused view omits it.
+    assert.doesNotMatch(focused.stdout, /cccc0000/);
+    const all = run('fork-tree.js', ['--static --all'], env);
+    assert.equal(all.status, 0, all.stderr);
+    assert.match(all.stdout, /bbbb0000[\s\S]*cccc0000|cccc0000[\s\S]*bbbb0000/);
+  });
+
   test('from a plain shell it lists the whole forest', (t) => {
     const { root } = tree(t);
     const res = run('fork-tree.js', ['--static'], { CLAUDE_CONFIG_DIR: root });
