@@ -2,7 +2,7 @@
 name: draft-ticket
 description: Write or update a ticket draft as a markdown file under the repository’s ticket-draft directory, using a fixed ticket structure. Use when chat research has settled enough to be flushed into one or more ticket files; do not use to create, edit, transition, or comment on items in an issue tracker.
 metadata:
-  prompt-version: "2026-09-21.1"
+  prompt-version: "2026-09-27.1"
 ---
 
 # Draft a Ticket
@@ -17,7 +17,7 @@ Read `.skillbox/tickets.json` under the repository root before writing anything.
 `paths.draftRoot`, `paths.docRoots`, `domainNotes`, and `jira.site` for citing issues.
 
 If it is not there, run the init described in [the configuration reference](../../CONFIG.md),
-then carry on with the request. Skip the Jira half of that init unless a ticket in this
+then carry on with the request. That init asks about Jira only when a ticket in this
 conversation carries a Jira key — writing a draft does not need a tracker.
 
 ## Accepted input
@@ -62,7 +62,7 @@ Pick the name by this precedence. First match wins.
 
 The slug names the problem, not the fix — `bug-notifications-survive-archive`, not `bug-add-clear-on-archive`. A fix changes during implementation; the problem does not.
 
-- When an id arrives later, rename the file to `<ID>.md` and rewrite every reference to it as a browse URL. The two happen together, never separately: a rename on its own breaks every inbound link. The `jira-push-ticket` skill does both as one step.
+- When an id arrives later, rename the file to `<ID>.md` and rewrite every reference to it as a browse URL. The two happen together, never separately: a rename on its own breaks every inbound link. The `jira-push-ticket` skill, in the `skillbox-jira` plugin, does both as one step.
 - Update an existing draft in place. Never create a `-v2` file. Ask before overwriting a file you have not read in this session.
 
 ## Citing a ticket that is already in Jira
@@ -86,7 +86,7 @@ A relative path to a `<KEY>.md` file is the mistake this rule exists to prevent.
 
 Never invent an id or a URL. A draft with no id gets a relative path and nothing else; a made-up key is worse than no link.
 
-When the Atlassian MCP server is reachable, read each cited key once with `getJiraIssue` before writing it. That confirms the key resolves and gives you the issue's real summary for the link text. If the server is unreachable, write the key you were given and say in the report that it is unverified.
+When the Atlassian MCP server is reachable — it arrives with the `skillbox-jira` plugin — read each cited key once with `getJiraIssue` before writing it. That confirms the key resolves and gives you the issue's real summary for the link text. If the server is unreachable, write the key you were given and say in the report that it is unverified.
 
 ## Structure
 

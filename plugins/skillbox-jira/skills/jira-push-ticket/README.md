@@ -32,6 +32,7 @@ it. They fail silently — the link still renders, and a reader only finds out b
 | Config | `jira.site`, `jira.projects`, `jira.severityToPriority`, `paths.draftRoot`, `paths.docRoots` — see [CONFIG.md](../../CONFIG.md) |
 | Atlassian MCP | **Required.** Shipped with the plugin; see the [plugin README](../../README.md) |
 | Git | The rename is `git mv`, and the final check is `git status` |
+| Drafts | Written by `draft-ticket` in the `skillbox` core plugin, which this plugin depends on |
 
 Issue types, priority names and link type names are **not** configured. They are read from the site
 at the point of use, so a project that gains a type or a site that renames a priority needs no edit

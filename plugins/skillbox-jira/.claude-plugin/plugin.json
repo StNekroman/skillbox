@@ -1,0 +1,19 @@
+{
+  "name": "skillbox-jira",
+  "version": "2.0.0",
+  "description": "Jira addon for the skillbox family. Push a ticket draft to Jira as an issue, rewrite every inbound reference across the repository and rename the draft to its issue key. Ships the Atlassian MCP server, and configures itself per repository on first use.",
+  "author": {
+    "name": "Roman Nefedov",
+    "email": "stnekroman@gmail.com"
+  },
+  "license": "0BSD",
+  "keywords": [
+    "jira",
+    "tickets",
+    "atlassian",
+    "issue-tracker"
+  ],
+  "dependencies": [
+    "skillbox"
+  ]
+}

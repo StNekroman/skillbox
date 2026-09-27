@@ -76,7 +76,7 @@ function forkSession(t) {
   const tr = new Transcript(0, project);
   tr.turn('Plan `B3`’s cache layer', 'Use an LRU.');
   tr.turn('What about eviction?', 'Evict on write.');
-  tr.command('skillbox-fork:fork-at', 'whatever');
+  tr.command('skillbox:fork-at', 'whatever');
   writeTranscript(root, SID, tr);
   const exe = fakeClaude(root);
   const log = path.join(root, 'calls.jsonl');
@@ -259,7 +259,7 @@ describe('fork-at.js — before the fork', () => {
     const res = run('fork-at.js', ['--dry-run', 'zebra'], s.env);
     assert.equal(res.status, 1);
     assert.match(res.stderr, /^Error: nothing matches "zebra"/);
-    assert.match(res.stderr, /pick one: {3}\/skillbox-fork:fork-at @/);
+    assert.match(res.stderr, /pick one: {3}\/skillbox:fork-at @/);
     assert.equal(res.stdout, '');
   });
 

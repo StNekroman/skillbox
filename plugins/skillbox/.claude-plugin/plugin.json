@@ -1,0 +1,19 @@
+{
+  "name": "skillbox",
+  "version": "2.0.0",
+  "description": "The dependency-free core of the skillbox family. Fork a Claude Code conversation into a new session truncated at a chosen point and navigate the resulting fork tree; write settled research into ticket draft files using a fixed ticket structure. Needs only Node.",
+  "author": {
+    "name": "Roman Nefedov",
+    "email": "stnekroman@gmail.com"
+  },
+  "license": "0BSD",
+  "keywords": [
+    "fork",
+    "sessions",
+    "transcript",
+    "navigation",
+    "tickets",
+    "drafts",
+    "productivity"
+  ]
+}

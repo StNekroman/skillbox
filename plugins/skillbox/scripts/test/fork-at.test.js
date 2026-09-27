@@ -11,7 +11,7 @@ function session() {
   const a = t.turn('Plan `B3`’s cache layer', 'We should use an LRU.');
   const b = t.turn('What about eviction?', 'Evict on write — the simplest rule.');
   const c = t.turn('Now write the tests', 'Done, see test/cache.test.js.');
-  const now = t.command('skillbox-fork:fork-at', 'whatever');
+  const now = t.command('skillbox:fork-at', 'whatever');
   return { t, a, b, c, now };
 }
 
@@ -37,9 +37,9 @@ describe('normalize', () => {
 
 describe('commandOf and displayText', () => {
   test('reads a namespaced command and keeps what was typed', () => {
-    const row = new Transcript().command('skillbox-fork:fork-at', '3 -- go');
-    assert.deepEqual(F.commandOf(row), { name: 'skillbox-fork:fork-at', bare: 'fork-at', args: '3 -- go' });
-    assert.equal(F.displayText(row), '/skillbox-fork:fork-at 3 -- go');
+    const row = new Transcript().command('skillbox:fork-at', '3 -- go');
+    assert.deepEqual(F.commandOf(row), { name: 'skillbox:fork-at', bare: 'fork-at', args: '3 -- go' });
+    assert.equal(F.displayText(row), '/skillbox:fork-at 3 -- go');
   });
 
   test('an ordinary prompt is not a command', () => {
@@ -175,7 +175,7 @@ describe('resolveCut', () => {
 
     // Namespaced: a plugin command does not answer to its bare name. And no
     // offset: it counts backwards, against the order of the list.
-    assert.equal(lines.at(-1), `pick one:   /skillbox-fork:fork-at @${c.uuid.slice(0, 8)}   stable, always this turn`);
+    assert.equal(lines.at(-1), `pick one:   /skillbox:fork-at @${c.uuid.slice(0, 8)}   stable, always this turn`);
     assert.ok(!lines.some((l) => /counts back/.test(l)));
   });
 
@@ -186,7 +186,7 @@ describe('resolveCut', () => {
     const first = t.turn('How do you do?', 'Doing well, thanks.');
     const between = t.turn('Something else', 'Sure.');
     const second = t.turn('How do you do?', 'Still good, nothing changed.');
-    t.command('skillbox-fork:fork-at', 'How do you do?');
+    t.command('skillbox:fork-at', 'How do you do?');
 
     const lines = errorLines(() => F.resolveCut(t.rows, { kind: 'text', value: 'How do you do?' }));
     const i1 = lineOf(lines, first);
@@ -228,12 +228,12 @@ describe('resolveCut', () => {
   test('fork commands are never selectable and never counted', () => {
     const t = new Transcript();
     const a = t.turn('first', 'one');
-    const fork = t.command('skillbox-fork:fork-at', 'first');
+    const fork = t.command('skillbox:fork-at', 'first');
     t.assistant('forked');
     t.command('fork-tree');
     t.assistant('tree');
     t.turn('second', 'two');
-    const now = t.command('skillbox-fork:fork-at', '1');
+    const now = t.command('skillbox:fork-at', '1');
 
     const cut = F.resolveCut(t.rows, { kind: 'offset', value: 1 });
     assert.equal(cut.total, 2);

@@ -1,6 +1,6 @@
 # scripts
 
-The implementation behind `/skillbox-fork:fork-at` and `/skillbox-fork:fork-tree`. The command
+The implementation behind `/skillbox:fork-at` and `/skillbox:fork-tree`. The command
 files in `../commands/` are thin wrappers that invoke these through `${CLAUDE_PLUGIN_ROOT}`.
 
 | File | What |
@@ -48,7 +48,7 @@ The headless turn only ever carries the idle prompt. A directive never runs unat
 No dependencies — Node's built-in runner. From the repository root:
 
 ```bash
-node --test 'plugins/skillbox-fork/scripts/test/*.test.js'
+node --test 'plugins/skillbox/scripts/test/*.test.js'
 ```
 
 Every test builds synthetic transcripts in a throwaway `CLAUDE_CONFIG_DIR`, so none reads your real

@@ -33,7 +33,7 @@ const COMMAND_RE =
 // Our own commands are machinery, never a place you would want to fork at, and
 // every invocation adds a turn that shifts the numbering of everything else.
 // Matched on the bare name: installed as a plugin these arrive namespaced, as
-// /skillbox-fork:fork-at, and a set of bare names would stop matching.
+// /skillbox:fork-at, and a set of bare names would stop matching.
 const OUR_COMMANDS = new Set(['fork-at', 'fork-tree']);
 
 // ---------------------------------------------------------------- cut point
@@ -232,7 +232,7 @@ function snippet(raw, norm, needle, width) {
 
 // The command is printed in full: a plugin's commands only answer to their
 // namespaced name, so a bare /fork-at is an unknown command.
-const COMMAND = '/skillbox-fork:fork-at';
+const COMMAND = '/skillbox:fork-at';
 
 // Only the @id is offered. An offset counts back from the end, so it shifts as
 // the conversation grows, and it reads in the opposite direction to the list.

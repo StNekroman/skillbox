@@ -1,23 +1,30 @@
-# skillbox-fork
+# skillbox
 
-Fork a Claude Code conversation into a new session truncated at a chosen point, and navigate the
-resulting tree.
+The core of the family: everything here needs nothing beyond Node. Fork a Claude Code conversation
+into a new session truncated at a chosen point and navigate the resulting tree; write settled
+research into ticket draft files.
 
 ## Components
 
-| Component                       | Kind    | What                                            |
-| ------------------------------- | ------- | ----------------------------------------------- |
-| `/skillbox-fork:fork-at`        | command | Fork the conversation at a chosen turn          |
-| `/skillbox-fork:fork-tree`      | command | Show where this session sits among its forks    |
-| [`scripts/`](scripts/README.md) | node    | The implementation, plus env vars and internals |
+| Component                                       | Kind      | What                                                                                       |
+| ----------------------------------------------- | --------- | ------------------------------------------------------------------------------------------ |
+| `/skillbox:fork-at`                             | command   | Fork the conversation at a chosen turn                                                     |
+| `/skillbox:fork-tree`                           | command   | Show where this session sits among its forks                                               |
+| [`draft-ticket`](skills/draft-ticket/README.md) | skill     | Writes one markdown file per deliverable, in a fixed ticket structure, every claim verified |
+| [`CONFIG.md`](CONFIG.md)                        | reference | The per-repository ticket config contract and its init flow                                |
+| [`scripts/`](scripts/README.md)                 | node      | The fork implementation, plus env vars and internals                                       |
 
 Commands are documented here rather than beside their files: every `.md` in `commands/` registers
 as a command, so a README in there would appear as a stray `/readme`.
 
+`draft-ticket` never touches a tracker. Turning a draft into a Jira issue is the
+[skillbox-jira](../skillbox-jira/README.md) addon's job, and the separation is deliberate: that
+plugin needs an MCP server and a sign-in, this one does not.
+
 ## fork-at
 
 ```
-/skillbox-fork:fork-at <@id | N | search text> [-- <directive for the child>]
+/skillbox:fork-at <@id | N | search text> [-- <directive for the child>]
 ```
 
 The child keeps history up to and including the matched exchange; the parent is left untouched. A
@@ -54,7 +61,7 @@ counting them would both pollute text search and shift every number.
 ## fork-tree
 
 ```
-/skillbox-fork:fork-tree [session-id | search text] [--full]
+/skillbox:fork-tree [session-id | search text] [--full]
 ```
 
 Default focus is the current session; an argument focuses another one. `--full` widens the view from
@@ -68,9 +75,20 @@ A session whose project directory has since been deleted or moved is tagged `dir
 opened: Claude Code looks a session up from the directory it was started in. The error names that
 directory, and the transcript folder to move if the project has relocated.
 
+## draft-ticket
+
+Settled research becomes one ticket file per deliverable, under the drafts directory named in the
+repository's `.skillbox/tickets.json`. On first use in a repository the skill discovers what it can,
+asks about what is genuinely a choice, and writes that file — then carries on with the task you
+asked for. Commit the file so your team shares one answer.
+
+[The configuration reference](CONFIG.md) has the schema and the init flow;
+[the skill's README](skills/draft-ticket/README.md) has what it produces and the rule that matters
+most.
+
 ## Requirements
 
 Node. Developed against v22; anything with `crypto.randomUUID` will do.
 
-This drives Claude Code's own session store and CLI, including two undocumented flags. See
-[scripts/README.md](scripts/README.md#version-coupling) for what an upgrade might break.
+The fork commands drive Claude Code's own session store and CLI, including two undocumented flags.
+See [scripts/README.md](scripts/README.md#version-coupling) for what an upgrade might break.

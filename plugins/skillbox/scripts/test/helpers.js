@@ -90,7 +90,7 @@ class Transcript {
 
 // A throwaway CLAUDE_CONFIG_DIR. Removed when the test finishes.
 function tempRoot(t) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'skillbox-fork-test-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'skillbox-test-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   return root;
 }

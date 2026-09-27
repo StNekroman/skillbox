@@ -23,14 +23,15 @@ When chat research has settled enough to be written down. One deliverable become
 settled defects become four files, never one merged ticket.
 
 It does **not** touch an issue tracker. Creating, editing, transitioning or commenting on a real
-issue is [jira-push-ticket](../jira-push-ticket/README.md)'s job, and the separation is deliberate.
+issue is [jira-push-ticket](../../../skillbox-jira/skills/jira-push-ticket/README.md)'s job, in the
+`skillbox-jira` addon, and the separation is deliberate.
 
 ## What it needs
 
 | | |
 |---|---|
 | Config | `paths.draftRoot`, `domainNotes`, and `jira.site` for citing issues by URL |
-| Atlassian MCP | Optional. Used only to verify a cited issue key and read its summary; without it the skill says in its report which keys are unverified |
+| Atlassian MCP | Optional; it arrives with the `skillbox-jira` addon. Used only to verify a cited issue key and read its summary; without it the skill says in its report which keys are unverified |
 | Tools | Read and grep. It never runs builds, tests, migrations or lint |
 
 ## The rule that matters most
