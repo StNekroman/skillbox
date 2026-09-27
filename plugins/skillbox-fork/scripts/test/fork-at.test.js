@@ -144,35 +144,83 @@ describe('resolveCut', () => {
     throwsCli(() => F.resolveCut(t.rows, { kind: 'text', value: 'file contents' }), /nothing matches/);
   });
 
-  test('ambiguous text lists every candidate with its @id, and never guesses', () => {
-    const { t, a, b } = session();
+  // The lines of a CliError's message, and the index of the line naming a row.
+  const errorLines = (fn) => {
+    try {
+      fn();
+    } catch (e) {
+      assert.ok(e instanceof CliError, `expected CliError, got ${e}`);
+      return e.message.split('\n');
+    }
+    assert.fail('expected a CliError');
+  };
+  const lineOf = (lines, row) => lines.findIndex((l) => l.includes(`@${row.uuid.slice(0, 8)}`));
+
+  test('ambiguous text lists every candidate oldest first, with the other half of its exchange', () => {
+    const { t, a, b, c } = session();
     // "the" is in turn 2's answer and turn 3's prompt.
-    assert.throws(
-      () => F.resolveCut(t.rows, { kind: 'text', value: 'the' }),
-      (e) => {
-        assert.ok(e instanceof CliError);
-        assert.match(e.message, /matches 2 turns — pick one/);
-        assert.ok(!e.message.includes(`@${a.uuid.slice(0, 8)}`));
-        assert.ok(e.message.includes(`@${b.uuid.slice(0, 8)}`));
-        assert.match(e.message, /pick one: {3}\/fork-at @/);
-        return true;
-      },
-    );
+    const lines = errorLines(() => F.resolveCut(t.rows, { kind: 'text', value: 'the' }));
+    assert.match(lines[0], /matches 2 turns — pick one/);
+    assert.equal(lineOf(lines, a), -1);
+
+    const ib = lineOf(lines, b);
+    const ic = lineOf(lines, c);
+    assert.ok(ib > 0 && ic > ib, 'the conversation order: turn 2 before turn 3');
+    assert.match(lines[ib], /^ {2}turn 2 of 3 +@\w{8} {2}the answer +.*the simplest rule/);
+    assert.match(lines[ib + 1], /^ +you: What about eviction\?$/);
+    assert.match(lines[ic], /^ {2}turn 3 of 3 +@\w{8} {2}your prompt +Now write the tests/);
+    assert.match(lines[ic + 1], /^ +answer: Done, see test\/cache\.test\.js\.$/);
+
+    // Namespaced: a plugin command does not answer to its bare name. And no
+    // offset: it counts backwards, against the order of the list.
+    assert.equal(lines.at(-1), `pick one:   /skillbox-fork:fork-at @${c.uuid.slice(0, 8)}   stable, always this turn`);
+    assert.ok(!lines.some((l) => /counts back/.test(l)));
   });
 
-  test('no match lists the selectable turns, newest first', () => {
-    const { t, a, c } = session();
-    assert.throws(
-      () => F.resolveCut(t.rows, { kind: 'text', value: 'zebra' }),
-      (e) => {
-        const lines = e.message.split('\n');
-        assert.match(lines[0], /nothing matches "zebra"/);
-        const first = lines.findIndex((l) => l.includes(`@${c.uuid.slice(0, 8)}`));
-        const last = lines.findIndex((l) => l.includes(`@${a.uuid.slice(0, 8)}`));
-        assert.ok(first > 0 && last > first, 'newest turn is listed first');
-        return true;
-      },
-    );
+  // The reported bug: two identical prompts, and picking "the first" forked at
+  // the second.
+  test('identical prompts are told apart by turn number and answer, in conversation order', () => {
+    const t = new Transcript();
+    const first = t.turn('How do you do?', 'Doing well, thanks.');
+    const between = t.turn('Something else', 'Sure.');
+    const second = t.turn('How do you do?', 'Still good, nothing changed.');
+    t.command('skillbox-fork:fork-at', 'How do you do?');
+
+    const lines = errorLines(() => F.resolveCut(t.rows, { kind: 'text', value: 'How do you do?' }));
+    const i1 = lineOf(lines, first);
+    const i2 = lineOf(lines, second);
+    assert.ok(i1 > 0 && i2 > i1, 'the earlier turn is listed first');
+    assert.match(lines[i1], /turn 1 of 3/);
+    assert.match(lines[i1 + 1], /answer: Doing well, thanks\.$/);
+    assert.match(lines[i2], /turn 3 of 3/);
+    assert.match(lines[i2 + 1], /answer: Still good, nothing changed\.$/);
+
+    // The @id on the first line forks after the first turn, not the second.
+    const cut = F.resolveCut(t.rows, { kind: 'id', value: first.uuid.slice(0, 8) });
+    assert.equal(cut.selIdx, 0);
+    assert.equal(cut.cutUuid, cutAfter(t.rows, between));
+  });
+
+  test('no match lists the selectable turns oldest first', () => {
+    const { t, a, b, c } = session();
+    const lines = errorLines(() => F.resolveCut(t.rows, { kind: 'text', value: 'zebra' }));
+    assert.match(lines[0], /nothing matches "zebra"/);
+    assert.equal(lines[2], 'turns you can select, oldest first:');
+    const [ia, ib, ic] = [a, b, c].map((r) => lineOf(lines, r));
+    assert.ok(ia > 2 && ib > ia && ic > ib);
+    assert.match(lines[ia], /^ {2}turn 1 of 3 +@\w{8} {2}"Plan `B3`’s cache layer"$/);
+    assert.match(lines[ia + 1], /^ +answer: We should use an LRU\.$/);
+  });
+
+  test('a long conversation lists only its latest turns, still oldest first', () => {
+    const t = new Transcript();
+    const rows = Array.from({ length: 15 }, (_, i) => t.turn(`prompt ${i + 1}`, `answer ${i + 1}`));
+    t.command('fork-at');
+    const lines = errorLines(() => F.resolveCut(t.rows, { kind: 'text', value: 'zebra' }));
+    assert.equal(lines[2], 'your latest 12 turns, oldest first:');
+    assert.equal(lineOf(lines, rows[2]), -1, 'turn 3 is past the window');
+    assert.match(lines[lineOf(lines, rows[3])], /turn 4 of 15/);
+    assert.ok(lineOf(lines, rows[14]) > lineOf(lines, rows[3]));
   });
 
   test('fork commands are never selectable and never counted', () => {
@@ -234,9 +282,113 @@ describe('snippet', () => {
 });
 
 describe('childPrompt', () => {
-  test('opens with the marker, then the directive or the idle text', () => {
-    assert.equal(F.childPrompt('P', 'C', 'go'), '[fork] parent=P cut=C\n\ngo');
-    assert.match(F.childPrompt('P', 'C', null), /^\[fork\] parent=P cut=C\n\nSession forked/);
+  // The headless turn runs unattended, so it only ever carries the idle text.
+  test('opens with the marker, then the idle text — never a directive', () => {
+    assert.equal(F.childPrompt('P', 'C', 'rm -rf everything').includes('rm -rf'), false);
+    assert.match(F.childPrompt('P', 'C'), /^\[fork\] parent=P cut=C\n\nSession forked[\s\S]*Wait for next user's input\.$/);
+  });
+
+  test('the marker is what the edge scanner recognises', () => {
+    const { MARKER } = require('../lib/fork-graph');
+    const P = 'aaaaaaaa-0000-4000-8000-000000000000';
+    const C = 'dddddddd-0000-4000-8000-000000000000';
+    const m = MARKER.exec(F.childPrompt(P, C));
+    assert.equal(m && m.index, 0);
+    assert.deepEqual([m[1], m[2]], [P, C]);
+  });
+});
+
+describe('buildResume', () => {
+  const child = 'cccccccc-0000-4000-8000-000000000000';
+  const directive = 'fix B3\'s "cache" bug & run\nthe tests';
+
+  test('a real binary gets the directive untouched, as its own argument', () => {
+    for (const [exe, platform] of [['C:\\bin\\claude.exe', 'win32'], ['claude', 'linux'], ['/usr/bin/claude', 'darwin']]) {
+      const inv = F.buildResume({ exe, child, directive, platform });
+      assert.equal(inv.shell, false);
+      assert.equal(inv.command, exe);
+      assert.deepEqual(inv.args, ['--resume', child, directive]);
+    }
+  });
+
+  test('no directive, no prompt argument', () => {
+    assert.deepEqual(F.buildResume({ exe: 'claude', child, directive: null, platform: 'linux' }).args, ['--resume', child]);
+    assert.equal(F.buildResume({ exe: 'claude', child, directive: null, platform: 'win32' }).command, `claude --resume ${child}`);
+  });
+
+  // Through cmd.exe a double quote inside the argument would end the quoting
+  // and hand `&` to cmd as a command separator.
+  test('through cmd.exe the directive is one quoted word with no quote inside it', () => {
+    const inv = F.buildResume({ exe: 'C:\\Program Files\\npm\\claude.cmd', child, directive, platform: 'win32' });
+    assert.equal(inv.shell, true);
+    assert.deepEqual(inv.args, []);
+    assert.equal(inv.command, `"C:\\Program Files\\npm\\claude.cmd" --resume ${child} "fix B3's 'cache' bug & run the tests"`);
+    const tail = inv.command.slice(inv.command.indexOf(child) + child.length + 1);
+    assert.equal((tail.match(/"/g) || []).length, 2, 'only the wrapping pair');
+  });
+});
+
+describe('buildSpec', () => {
+  const cut = { cutUuid: 'cut', dropsTurnUuid: 'drop', droppedTurns: 2, label: 'the turn' };
+
+  test('records the session directory from the transcript, not the caller', () => {
+    const t = new Transcript(0, '/work/project');
+    t.turn('hi', 'hello');
+    const spec = F.buildSpec({ root: '/cfg', rows: t.rows, parent: 'P', child: 'C', cut, directive: 'go', env: {}, fallbackCwd: '/somewhere/else' });
+    assert.equal(spec.cwd, '/work/project');
+    assert.deepEqual(
+      { cutUuid: spec.cutUuid, dropsTurnUuid: spec.dropsTurnUuid, droppedTurns: spec.droppedTurns, label: spec.label, directive: spec.directive },
+      { cutUuid: 'cut', dropsTurnUuid: 'drop', droppedTurns: 2, label: 'the turn', directive: 'go' },
+    );
+  });
+
+  test('falls back to the caller directory when the transcript has none', () => {
+    const t = new Transcript();
+    t.turn('hi', 'hello');
+    assert.equal(F.buildSpec({ root: '/cfg', rows: t.rows, parent: 'P', child: 'C', cut, env: {}, fallbackCwd: '/here' }).cwd, '/here');
+  });
+
+  // A window may start from a fresh environment, so the spec has to carry
+  // what the parent's environment would otherwise have supplied.
+  test('captures the config directory and the resolved binary', () => {
+    const env = { CLAUDE_CONFIG_DIR: '/custom/cfg', CLAUDE_CODE_EXECPATH: '/opt/claude/bin/claude' };
+    const spec = F.buildSpec({ root: '/custom/cfg', rows: [], parent: 'P', child: 'C', cut, env });
+    assert.equal(spec.configDir, '/custom/cfg');
+    assert.equal(spec.exe, '/opt/claude/bin/claude');
+    assert.equal(spec.directive, null);
+    const bare = F.buildSpec({ root: '/home/me/.claude', rows: [], parent: 'P', child: 'C', cut, env: {} });
+    assert.equal(bare.configDir, null, 'the default location is left to the default');
+    assert.equal(bare.exe, 'claude');
+  });
+});
+
+describe('finishCommand', () => {
+  test('absolute node and script, spaced paths quoted', () => {
+    assert.equal(
+      F.finishCommand('C:\\Users\\A B\\.claude\\fork-pending\\c.json', 'C:\\Program Files\\nodejs\\node.exe', 'D:\\p\\fork-at.js'),
+      '"C:\\Program Files\\nodejs\\node.exe" D:\\p\\fork-at.js --finish "C:\\Users\\A B\\.claude\\fork-pending\\c.json"',
+    );
+  });
+
+  test('defaults to this node and this script', () => {
+    const cmd = F.finishCommand('/tmp/x.json');
+    assert.ok(cmd.includes(require('path').join(__dirname, '..', 'fork-at.js')));
+    assert.ok(cmd.includes(process.execPath));
+  });
+});
+
+describe('childEnv', () => {
+  test('points at the parent config directory and never looks nested', () => {
+    const env = F.childEnv({ configDir: '/custom/cfg' }, { CLAUDE_CONFIG_DIR: '/wrong', PATH: '/bin' });
+    assert.equal(env.CLAUDE_CONFIG_DIR, '/custom/cfg');
+    assert.equal(env.PATH, '/bin');
+    assert.equal(F.childEnv({ configDir: null }, { PATH: '/bin' }).CLAUDE_CONFIG_DIR, undefined);
+  });
+});
+
+describe('pendingFile', () => {
+  test('one file per child, under the config directory', () => {
+    assert.equal(F.pendingFile('/cfg', 'C'), require('path').join('/cfg', 'fork-pending', 'C.json'));
   });
 });
 

@@ -5,7 +5,7 @@ files in `../commands/` are thin wrappers that invoke these through `${CLAUDE_PL
 
 | File | What |
 |---|---|
-| `fork-at.js` | Resolves a cut point, then launches one headless turn over the kept history to create the child session |
+| `fork-at.js` | Resolves a cut point and opens a window at once; in that window, creates the child with one headless turn and resumes it |
 | `fork-tree.js` | Renders the fork tree; interactive picker when run from a TTY |
 | `lib/fork-graph.js` | Shared: transcript reading, edge collection, session metadata, terminal launching |
 | `test/` | Unit and end-to-end tests, run with Node's built-in runner |
@@ -18,7 +18,28 @@ node fork-tree.js
 node fork-at.js --dry-run "some phrase"
 ```
 
-`--dry-run` prints the `claude` invocation and the child's first prompt without creating anything.
+A real run prints a single line — which turn, which child, where it went — because it stays in the
+parent's history once per fork. `--dry-run` prints the full plan instead: both commands the window
+would run, and the child's first prompt, without creating anything. `--no-open` creates the fork in the current process and prints the resume
+command instead of opening a window.
+
+## How a fork is made
+
+Two stages, so the window opens straight away instead of after a model turn.
+
+1. **In the parent.** `fork-at.js` resolves the cut, writes a hand-off file to
+   `fork-pending/<child>.json`, opens a window running `fork-at.js --finish <that file>`, and exits.
+2. **In the window.** The finishing stage reads and deletes the hand-off, runs the headless
+   `claude -p` turn that creates the child, writes the ledger, then starts `claude --resume <child>`
+   interactively — with the directive, if there is one, as your first message.
+
+The hand-off carries everything the window needs, because a window cannot be trusted to inherit it:
+Terminal.app, iTerm and gnome-terminal start from a fresh environment in your home directory. So the
+config directory, the resolved binary and the project directory all travel in the file, and the
+window changes into the project directory itself — a session resumed from the wrong directory is
+looked up in the wrong project.
+
+The headless turn only ever carries the idle prompt. A directive never runs unattended.
 
 ## Tests
 
@@ -29,8 +50,10 @@ node --test 'plugins/skillbox-fork/scripts/test/*.test.js'
 ```
 
 Every test builds synthetic transcripts in a throwaway `CLAUDE_CONFIG_DIR`, so none reads your real
-sessions. `cli.test.js` runs the scripts as the slash commands do, but only with `--dry-run` or an
-invalid `--open`, so nothing is launched and no model is called.
+sessions. `cli.test.js` runs the scripts as the slash commands do, end to end, against
+`test/fixtures/fake-claude.js` — a stand-in binary that records its arguments, stdin, working
+directory and config directory. `FORK_AT_TERMINAL='{cmd}'` runs the window's command as a hidden
+background process, so no window opens and no model is called.
 
 The scripts are importable for this reason: `main()` runs only under `require.main === module`, and a
 failure throws `CliError` instead of exiting, which `runMain` turns into the printed error.
@@ -70,9 +93,11 @@ A Claude Code upgrade is the likeliest thing to break this.
 
 ## What they write
 
-Two files in the config directory, both additive and safe to delete:
+In the config directory, all additive and safe to delete:
 
 - `fork-tree.jsonl` — one line per fork: parent, child, cut point.
 - `fork-tree-cache.json` — size/mtime cache so the tree does not reparse every transcript.
+- `fork-pending/` — hand-off files between the two stages of a fork, each deleted when its window
+  picks it up. One left behind means a window that never started.
 
 Transcripts themselves are only ever read.

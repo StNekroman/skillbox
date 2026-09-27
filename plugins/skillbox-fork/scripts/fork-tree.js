@@ -139,6 +139,7 @@ function decorate(rows, root, cache, edges, focus, live, focusCwd) {
       title: G.preview(meta.title, 52) || '(untitled)',
       turns: meta.turns ? `[${meta.turns} turn${meta.turns === 1 ? '' : 's'}]` : '',
       age: age(meta.lastTs),
+      cwd: meta.cwd,
       tags,
     };
   });
@@ -238,23 +239,26 @@ function buildForest(edges, kids) {
 
 // ---------------------------------------------------------------- actions
 
-function openSession(id, inPlace) {
+// A session is resumed from the directory it was started in: Claude Code
+// files it under that project, and looks it up from where `--resume` runs.
+function openSession(id, inPlace, cwd) {
   const exe = G.claudeExe();
+  const dir = cwd && fs.existsSync(cwd) ? cwd : undefined;
   if (inPlace) {
     // Through a shell, one pre-joined string: Node deprecates an argument list
     // alongside a shell, and a session id needs no quoting.
-    const opts = { stdio: 'inherit', env: G.cleanEnv() };
+    const opts = { stdio: 'inherit', env: G.cleanEnv(), cwd: dir };
     const res = G.needsShell(exe)
-      ? spawnSync(`${/\s/.test(exe) ? `"${exe}"` : exe} --resume ${id}`, { ...opts, shell: true })
+      ? spawnSync(`${G.quoteIfSpaced(exe)} --resume ${id}`, { ...opts, shell: true })
       : spawnSync(exe, ['--resume', id], opts);
     process.exit(res.status === null ? 1 : res.status);
   }
-  const opened = G.openTerminal(G.resumeCommand(id));
+  const opened = G.openTerminal(G.resumeCommand(id), dir);
   // A slash command cannot take over the terminal its own session is running
   // in, so it opens a window instead. Print the command too, for switching by
   // hand from a shell.
   console.log(opened ? `opened ${id} in ${opened}` : 'no terminal found');
-  console.log(`to switch in place instead:  claude --resume ${id}`);
+  console.log(`to switch in place instead:  claude --resume ${id}${dir ? `   (from ${dir})` : ''}`);
 }
 
 function interactive(rows, startIdx) {
@@ -300,8 +304,8 @@ function interactive(rows, startIdx) {
       pos = (pos + 1) % pickable.length;
       draw(false);
     } else if (key.name === 'return') {
-      const id = rows[pickable[pos]].id;
-      done(() => openSession(id, true));
+      const { id, cwd } = rows[pickable[pos]];
+      done(() => openSession(id, true, cwd));
     } else if (key.name === 'q' || key.name === 'escape' || (key.ctrl && key.name === 'c')) {
       done(() => process.exit(0));
     }
@@ -355,7 +359,7 @@ function main() {
   if (openIdx !== null) {
     const r = rows[openIdx - 1];
     if (!r || r.cycle) fail(`no node numbered ${openIdx}`);
-    openSession(r.id, false);
+    openSession(r.id, false, r.cwd);
     return;
   }
 

@@ -15,8 +15,10 @@ function id(n, space = 0) {
 
 // Builds one session's rows, chaining parentUuid the way a live session does.
 class Transcript {
-  constructor(space = 0) {
+  // cwd, when given, is stamped on every row, as Claude Code does.
+  constructor(space = 0, cwd = undefined) {
     this.space = space;
+    this.cwd = cwd;
     this.rows = [];
     this.n = 0;
     this.last = null;
@@ -24,7 +26,14 @@ class Transcript {
 
   add(row) {
     const uuid = id(++this.n, this.space);
-    const r = { parentUuid: this.last, isSidechain: false, uuid, timestamp: new Date(2026, 0, 1, 0, this.n).toISOString(), ...row };
+    const r = {
+      parentUuid: this.last,
+      isSidechain: false,
+      uuid,
+      timestamp: new Date(2026, 0, 1, 0, this.n).toISOString(),
+      ...(this.cwd ? { cwd: this.cwd } : {}),
+      ...row,
+    };
     this.rows.push(r);
     this.last = uuid;
     return r;

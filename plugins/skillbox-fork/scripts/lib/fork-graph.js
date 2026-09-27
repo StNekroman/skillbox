@@ -82,6 +82,15 @@ function promptText(d) {
     .join('\n');
 }
 
+// The directory the session was started in. Claude Code files a session under
+// its project directory, and `--resume` looks it up from the directory it runs
+// in, so anything that resumes a session has to run from here — not from
+// wherever the calling shell happens to be.
+function sessionCwd(rows) {
+  const hit = rows.find((d) => typeof d.cwd === 'string' && d.cwd);
+  return hit ? hit.cwd : null;
+}
+
 function preview(text, width) {
   const flat = String(text || '').replace(/\s+/g, ' ').trim();
   return flat.length > width ? `${flat.slice(0, width - 1)}…` : flat;
@@ -289,37 +298,68 @@ function needsShell(exe, platform = process.platform) {
 // a plain "claude", which resolves against your own PATH and cannot go stale
 // the way a recorded absolute path can.
 function resumeCommand(sessionId) {
-  const exe = claudeExe();
-  return `${/\s/.test(exe) ? `"${exe}"` : exe} --resume ${sessionId}`;
+  return `${quoteIfSpaced(claudeExe())} --resume ${sessionId}`;
 }
 
-function openTerminal(cmd) {
+// Double quotes around a path that needs them, in a form both sh and cmd.exe
+// read. Only for paths and ids: it escapes nothing inside.
+function quoteIfSpaced(s) {
+  return /\s/.test(s) ? `"${s}"` : s;
+}
+
+// One argument for sh, whatever it contains.
+function shq(s) {
+  return `'${String(s).replace(/'/g, `'\\''`)}'`;
+}
+
+// The command a new window runs: `cmd`, from `cwd`.
+//
+// A window does not reliably start where we are. Terminal.app, iTerm and
+// gnome-terminal open in your home directory, and a session resumed from the
+// wrong directory is looked up in the wrong project. So the window changes
+// directory itself rather than trusting the one it inherits.
+function terminalCommand(cmd, cwd, platform = process.platform) {
+  if (!cwd) return cmd;
+  return platform === 'win32' ? `cd /d "${cwd}" && ${cmd}` : `cd ${shq(cwd)} && ${cmd}`;
+}
+
+// cmd /k strips the first and last quote of its command line when the line
+// holds more than one pair — which a quoted path plus a quoted argument does.
+// One extra outer pair is what it strips, leaving the command intact.
+function windowsStartCommand(full) {
+  return `start "" cmd /k "${full}"`;
+}
+
+function openTerminal(cmd, cwd) {
   const env = cleanEnv();
+  const dir = cwd && fs.existsSync(cwd) ? cwd : null;
+  const full = terminalCommand(cmd, dir);
+  const opts = { detached: true, stdio: 'ignore', env, ...(dir ? { cwd: dir } : {}) };
   const tmpl = process.env.FORK_AT_TERMINAL;
   if (tmpl) {
-    spawn(tmpl.replace('{cmd}', cmd), { shell: true, detached: true, stdio: 'ignore', env }).unref();
+    spawn(tmpl.replace('{cmd}', full), { ...opts, shell: true }).unref();
     return 'FORK_AT_TERMINAL';
   }
   if (process.platform === 'win32') {
-    spawn(`start "" cmd /k ${cmd}`, { shell: true, detached: true, stdio: 'ignore', env }).unref();
+    spawn(windowsStartCommand(full), { ...opts, shell: true }).unref();
     return 'new cmd window';
   }
   if (process.platform === 'darwin') {
     const iterm = process.env.TERM_PROGRAM === 'iTerm.app';
     // The command goes inside an AppleScript string literal, and a quoted exe
     // path would otherwise close it early.
-    const esc = cmd.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    const esc = full.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
     const script = iterm
       ? `tell application "iTerm" to create window with default profile command "${esc}"`
       : `tell application "Terminal" to do script "${esc}"`;
-    spawn('osascript', ['-e', script], { detached: true, stdio: 'ignore', env }).unref();
+    spawn('osascript', ['-e', script], opts).unref();
     return iterm ? 'new iTerm window' : 'new Terminal.app window';
   }
-  const inner = `${cmd}; exec $SHELL`;
+  const inner = `${full}; exec "\${SHELL:-sh}"`;
   for (const term of [process.env.TERMINAL, 'x-terminal-emulator', 'gnome-terminal', 'konsole', 'xfce4-terminal', 'xterm'].filter(Boolean)) {
     if (!which(term)) continue;
-    const args = term === 'gnome-terminal' ? ['--', 'sh', '-c', inner] : ['-e', `sh -c '${inner}'`];
-    spawn(term, args, { detached: true, stdio: 'ignore', env }).unref();
+    const args = term === 'gnome-terminal' ? ['--', 'sh', '-c', inner] : ['-e', `sh -c ${shq(inner)}`];
+    spawn(term, args, opts).unref();
     return term;
   }
   return null;
@@ -335,6 +375,7 @@ module.exports = {
   readRows,
   isHumanPrompt,
   promptText,
+  sessionCwd,
   preview,
   loadCache,
   saveCache,
@@ -347,4 +388,8 @@ module.exports = {
   claudeExe,
   needsShell,
   resumeCommand,
+  quoteIfSpaced,
+  shq,
+  terminalCommand,
+  windowsStartCommand,
 };

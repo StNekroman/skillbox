@@ -37,8 +37,12 @@ chat still matches the source it came from — backticks, bold markers, curly qu
 line wrapping are all ignored. Ambiguous text is never resolved by guessing: the script lists the
 candidates and exits.
 
-Anything after `--` becomes the child's first instruction, so that turn does real work instead of
-being spent on a summary. With no directive the child acknowledges and waits.
+The child opens in a new window straight away; the fork is created inside it, which takes a few
+seconds, and the window then becomes the child session, in the parent's project directory.
+
+Anything after `--` is sent as your first message once the child is open, so it runs where you can
+see it and approve what it does — never unattended. With no directive the child opens idle and
+waits.
 
 `fork-at` and `fork-tree` turns are never selectable and never counted — they are machinery, and
 counting them would both pollute text search and shift every number.

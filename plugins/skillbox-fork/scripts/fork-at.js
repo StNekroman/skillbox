@@ -20,9 +20,8 @@ const {
   preview,
   openTerminal,
   cleanEnv,
-  claudeExe,
   needsShell,
-  resumeCommand,
+  quoteIfSpaced,
 } = G;
 
 // A slash-command turn is stored as a plain string, not a content array, so it
@@ -218,46 +217,56 @@ function snippet(raw, norm, needle, width) {
   return `${start > 0 ? '…' : ''}${body}${start + width < raw.length ? '…' : ''}`;
 }
 
-// Offsets count from the end, so they shift as soon as the conversation grows —
-// including from the very fork-at turns this command adds. The @id is stable,
-// so it is offered first.
-// Takes explicit {uuid, offset} pairs: the offset must be the real position in
-// the selectable list, not an index into whatever subset is being displayed.
-function pickHint(entries) {
-  if (!entries.length) return [];
-  const e = entries[Math.min(1, entries.length - 1)];
-  return [
-    '',
-    `pick one:   /fork-at @${e.uuid.slice(0, 8)}       stable, always this turn`,
-    `            /fork-at ${String(e.offset).padEnd(14)}counts back from the end, shifts if the conversation grows`,
-  ];
+// The command is printed in full: a plugin's commands only answer to their
+// namespaced name, so a bare /fork-at is an unknown command.
+const COMMAND = '/skillbox-fork:fork-at';
+
+// Only the @id is offered. An offset counts back from the end, so it shifts as
+// the conversation grows, and it reads in the opposite direction to the list.
+function pickHint(uuid) {
+  return ['', `pick one:   ${COMMAND} @${uuid.slice(0, 8)}   stable, always this turn`];
+}
+
+// Candidate lists run oldest to newest, in the order of the conversation, and
+// name each turn by its place in it: "turn 2 of 5" is the same number the
+// fork's own output uses. Listed newest first, two identical prompts traded
+// places — "the first one" meant the earlier turn to you and the later one to
+// the list, and a picker built from it forked at the wrong one.
+// Each candidate also shows the other half of its exchange. Two turns that
+// match the same words rarely got the same answer, and that is what tells them
+// apart.
+function turnPos(i, sel) {
+  return `turn ${i + 1} of ${sel.length}`.padEnd(`turn ${sel.length} of ${sel.length}`.length);
 }
 
 function failAmbiguous(needle, hits, sel, texts) {
   const lines = [`"${needle}" matches ${hits.length} turns — pick one.`, ''];
-  for (const h of [...hits].reverse()) {
-    const n = sel.length - 1 - h.i;
+  for (const h of hits) {
     const t = texts[h.e.ai];
+    const lead = `  ${turnPos(h.i, sel)}  @${h.e.uuid.slice(0, 8)}  `;
     const body = h.inPrompt ? snippet(t.prompt, t.pN, needle, 58) : snippet(t.answer, t.aN, needle, 58);
-    lines.push(`  ${String(n).padStart(2)}  @${h.e.uuid.slice(0, 8)}  ${h.where.padEnd(11)} ${body}`);
+    lines.push(`${lead}${h.where.padEnd(11)} ${body}`);
+    const other = h.inPrompt ? t.answer && `answer: ${preview(t.answer, 58)}` : `you: ${preview(t.prompt, 58)}`;
+    if (other) lines.push(`${' '.repeat(lead.length)}${other}`);
   }
-  lines.push(...pickHint(hits.map((h) => ({ uuid: h.e.uuid, offset: sel.length - 1 - h.i })).reverse()));
+  lines.push(...pickHint(hits[hits.length - 1].e.uuid));
   fail(lines.join('\n'));
 }
 
 function failNoMatch(needle, sel, texts) {
+  const from = Math.max(0, sel.length - 12);
   const lines = [
     `nothing matches "${needle}" — searched your prompts and the answers.`,
     '',
-    'turns you can select (newest first):',
+    from ? `your latest ${sel.length - from} turns, oldest first:` : 'turns you can select, oldest first:',
   ];
-  const shown = sel.slice(-12).reverse();
-  shown.forEach((e, i) => {
-    lines.push(`  ${String(i).padStart(2)}  @${e.uuid.slice(0, 8)}  "${preview(texts[e.ai].prompt, 62)}"`);
-    const ans = texts[e.ai].answer;
-    if (ans) lines.push(`                   ${preview(ans, 62)}`);
+  sel.slice(from).forEach((e, k) => {
+    const t = texts[e.ai];
+    const lead = `  ${turnPos(from + k, sel)}  @${e.uuid.slice(0, 8)}  `;
+    lines.push(`${lead}"${preview(t.prompt, 62)}"`);
+    if (t.answer) lines.push(`${' '.repeat(lead.length)}answer: ${preview(t.answer, 62)}`);
   });
-  lines.push(...pickHint(shown.map((e, i) => ({ uuid: e.uuid, offset: i }))));
+  lines.push(...pickHint(sel[sel.length - 1].uuid));
   fail(lines.join('\n'));
 }
 
@@ -294,30 +303,33 @@ function parseArgs(argv) {
   return { flags, selector: parseSelector(words.join(' ')), directive };
 }
 
-// -p needs a prompt, so a fork with no directive still costs one turn. That
-// turn must not start work: the fork usually exists because the plan is still
-// being argued about, and in auto mode an instruction like "continue" is
-// enough for the child to begin editing files on its own.
+// The child's first turn, spent by -p on creating the fork. It must not start
+// work: the fork usually exists because the plan is still being argued about,
+// and in auto mode an instruction like "continue" is enough for the child to
+// begin editing files on its own, with nobody watching.
 // Phrased as "nothing asked yet", never as a prohibition. Wording like "do
 // not use any tools" reads as a standing rule for the whole session, so the
 // child would carry it forward and refuse to work later.
+// A directive is never part of it. It is sent afterwards, as your first
+// message in the interactive session, where you can see it run and approve
+// what it does.
 const IDLE = ['Session forked from the conversation above, at the point shown.', "Wait for next user's input."].join(
   '\n',
 );
 
-function childPrompt(parent, cutUuid, directive) {
-  return `[fork] parent=${parent} cut=${cutUuid}\n\n${directive || IDLE}`;
+function childPrompt(parent, cutUuid) {
+  return `[fork] parent=${parent} cut=${cutUuid}\n\n${IDLE}`;
 }
 
 // The headless call that creates the child.
 //
-// The prompt is multi-line and carries whatever the directive says, so it
-// cannot survive a shell: Node joins the arguments with spaces and quotes
-// nothing, and cmd.exe cannot carry a newline in an argument at all. When a
-// shell is unavoidable, the prompt goes on stdin — `claude -p` reads it from
-// there when no prompt argument is given — and every argument left is a flag
-// or an id, which no shell can mangle. They are joined into one command string
-// here, because Node deprecates passing an argument list alongside a shell.
+// The prompt is multi-line, so it cannot survive a shell: Node joins the
+// arguments with spaces and quotes nothing, and cmd.exe cannot carry a newline
+// in an argument at all. When a shell is unavoidable, the prompt goes on stdin
+// — `claude -p` reads it from there when no prompt argument is given — and
+// every argument left is a flag or an id, which no shell can mangle. They are
+// joined into one command string here, because Node deprecates passing an
+// argument list alongside a shell.
 function buildInvocation({ exe, parent, child, cut, prompt, platform = process.platform }) {
   const shell = needsShell(exe, platform);
   const args = [
@@ -334,16 +346,163 @@ function buildInvocation({ exe, parent, child, cut, prompt, platform = process.p
     `fork-${parent.slice(0, 8)}`,
   ];
   if (shell) {
-    const quoted = /\s/.test(exe) ? `"${exe}"` : exe;
-    return { command: [quoted, ...args].join(' '), args: [], input: prompt, shell };
+    return { command: [quoteIfSpaced(exe), ...args].join(' '), args: [], input: prompt, shell };
   }
   return { command: exe, args: [...args, prompt], input: null, shell };
+}
+
+// The interactive session the window ends in, with the directive as its first
+// message. Stdin is the terminal here, so a directive can only travel as an
+// argument. Through cmd.exe that argument cannot be made exact: a `"` inside
+// toggles cmd's quoting and exposes `&` and `|` to it. So on that path — a
+// bare `claude` on Windows, rare in practice — double quotes become single
+// ones and whitespace is flattened. Everywhere else it is passed untouched.
+function buildResume({ exe, child, directive, platform = process.platform }) {
+  const shell = needsShell(exe, platform);
+  if (shell) {
+    const words = [quoteIfSpaced(exe), '--resume', child];
+    if (directive) words.push(`"${directive.replace(/"/g, "'").replace(/\s+/g, ' ')}"`);
+    return { command: words.join(' '), args: [], shell };
+  }
+  return { command: exe, args: ['--resume', child, ...(directive ? [directive] : [])], shell };
+}
+
+// ---------------------------------------------------------------- hand-off
+
+// The parent's half ends by writing everything the window needs into one file,
+// because the window cannot be trusted to inherit anything else. Terminal.app,
+// iTerm and gnome-terminal start from a fresh environment and your home
+// directory, so a CLAUDE_CONFIG_DIR, the resolved binary and the project
+// directory would all be lost. The directive travels here too, which keeps it
+// off a command line that four different shells would each quote differently.
+function pendingFile(root, child) {
+  return path.join(root, 'fork-pending', `${child}.json`);
+}
+
+function buildSpec({ root, rows, parent, child, cut, directive, env = process.env, fallbackCwd = process.cwd() }) {
+  return {
+    version: 1,
+    root,
+    configDir: env.CLAUDE_CONFIG_DIR || null,
+    exe: env.CLAUDE_CODE_EXECPATH || 'claude',
+    cwd: G.sessionCwd(rows) || fallbackCwd,
+    parent,
+    child,
+    cutUuid: cut.cutUuid,
+    dropsTurnUuid: cut.dropsTurnUuid,
+    droppedTurns: cut.droppedTurns,
+    label: cut.label,
+    directive: directive || null,
+  };
+}
+
+function writeSpec(spec) {
+  const file = pendingFile(spec.root, spec.child);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify(spec, null, 2), 'utf8');
+  return file;
+}
+
+function readSpec(file) {
+  let spec;
+  try {
+    spec = JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch (e) {
+    fail(`cannot read the fork hand-off ${file}: ${e.message}`);
+  }
+  if (!spec || spec.version !== 1) fail(`unrecognised fork hand-off ${file}`);
+  // One use only: a hand-off replayed later would create a second child.
+  try { fs.unlinkSync(file); } catch { /* already gone is fine */ }
+  return spec;
+}
+
+// What the window runs: this script again, in its finishing mode. Absolute
+// node and script paths, because the window's PATH is not ours.
+function finishCommand(specFile, node = process.execPath, script = __filename) {
+  return [quoteIfSpaced(node), quoteIfSpaced(script), '--finish', quoteIfSpaced(specFile)].join(' ');
+}
+
+// The environment for everything the window launches: never nested inside the
+// parent, and pointed at the parent's config directory.
+function childEnv(spec, base = cleanEnv()) {
+  const env = { ...base };
+  if (spec.configDir) env.CLAUDE_CONFIG_DIR = spec.configDir;
+  return env;
+}
+
+// Only a directory that still exists; spawning into a missing one fails
+// outright rather than falling back.
+function existingDir(dir) {
+  return dir && fs.existsSync(dir) ? dir : undefined;
+}
+
+// ---------------------------------------------------------------- the fork
+
+// Runs the headless turn that creates the child, then records it. Throws, with
+// nothing recorded, when the child could not be created.
+// The progress lines are for the window, where you watch it happen. Run from
+// the parent they would only add to its history, so they are left out there.
+function createFork(spec, { quiet = false } = {}) {
+  const prompt = childPrompt(spec.parent, spec.cutUuid);
+  const cut = { cutUuid: spec.cutUuid, dropsTurnUuid: spec.dropsTurnUuid };
+  const inv = buildInvocation({ exe: spec.exe, parent: spec.parent, child: spec.child, cut, prompt });
+
+  if (!quiet) console.log('creating fork…  (one headless turn over the kept history)');
+  const started = Date.now();
+  const opts = {
+    encoding: 'utf8',
+    input: inv.input === null ? undefined : inv.input,
+    stdio: [inv.input === null ? 'ignore' : 'pipe', 'pipe', 'pipe'],
+    cwd: existingDir(spec.cwd),
+    env: childEnv(spec),
+  };
+  const res = inv.shell ? spawnSync(inv.command, { ...opts, shell: true }) : spawnSync(inv.command, inv.args, opts);
+
+  if (res.error) fail(`could not run ${inv.command}: ${res.error.message}`);
+  if (res.status !== 0) {
+    console.error((res.stderr || res.stdout || '').trim());
+    fail(`claude exited ${res.status} — no fork created, nothing recorded`);
+  }
+  if (!quiet) console.log(`done in ${Math.round((Date.now() - started) / 1000)}s`);
+
+  const ledger = path.join(spec.root, 'fork-tree.jsonl');
+  const entry = {
+    ts: new Date().toISOString(),
+    parent: spec.parent,
+    child: spec.child,
+    cutUuid: spec.cutUuid,
+    droppedTurns: spec.droppedTurns,
+    matchedPrompt: spec.label,
+    cwd: spec.cwd,
+    // null records "no directive given", rather than storing the boilerplate.
+    directive: spec.directive,
+  };
+  try {
+    fs.appendFileSync(ledger, `${JSON.stringify(entry)}\n`, 'utf8');
+  } catch (e) {
+    note(`could not write the ledger (${e.message}) — the [fork] marker in the child still records the link`);
+  }
+}
+
+// The window's half: create the fork, then become the child session.
+function finish(specFile) {
+  const spec = readSpec(specFile);
+  createFork(spec);
+  console.log('');
+  const inv = buildResume({ exe: spec.exe, child: spec.child, directive: spec.directive });
+  const opts = { stdio: 'inherit', cwd: existingDir(spec.cwd), env: childEnv(spec) };
+  const res = inv.shell ? spawnSync(inv.command, { ...opts, shell: true }) : spawnSync(inv.command, inv.args, opts);
+  if (res.error) fail(`could not run ${inv.command}: ${res.error.message}`);
+  process.exit(res.status === null ? 1 : res.status);
 }
 
 // ---------------------------------------------------------------- main
 
 function main() {
-  const { flags, selector, directive } = parseArgs(process.argv.slice(2));
+  const argv = process.argv.slice(2);
+  if (argv[0] === '--finish') return finish(argv.slice(1).join(' '));
+
+  const { flags, selector, directive } = parseArgs(argv);
 
   const root = configRoot();
   const parent = process.env.CLAUDE_CODE_SESSION_ID;
@@ -358,7 +517,45 @@ function main() {
   const rows = readRows(transcript);
   const cut = resolveCut(rows, selector);
   const child = crypto.randomUUID();
+  const spec = buildSpec({ root, rows, parent, child, cut, directive });
 
+  if (flags.has('--dry-run')) return dryRun({ parent, child, cut, spec, selector, directive });
+
+  // Two audiences, two strings. The printed one is for you to type later in
+  // your own shell, where PATH is what resolves; the window gets the resolved
+  // binary, because it inherits no PATH assumption.
+  const resumeHint = `claude --resume ${child}`;
+
+  // --no-open, or no terminal to open: create the fork here and leave the
+  // child for you to resume. The directive has nowhere to go without a window.
+  const createHere = () => {
+    createFork(spec, { quiet: true });
+    const unsent = directive ? ' (directive not sent — paste it in yourself)' : '';
+    console.log(summaryLine(cut, child, `resume with: ${resumeHint}${unsent}`));
+  };
+
+  if (flags.has('--no-open')) return createHere();
+
+  // The window does the slow part, so it opens now rather than after a model
+  // turn, and nothing here waits on it.
+  const specFile = writeSpec(spec);
+  const opened = openTerminal(finishCommand(specFile), spec.cwd);
+  if (!opened) {
+    fs.unlinkSync(specFile);
+    note('no terminal found — creating the fork here instead');
+    return createHere();
+  }
+  console.log(summaryLine(cut, child, `opening in ${opened}`));
+}
+
+// What a real run prints: one line. It stays in the parent's history for good,
+// once per fork, so it carries only what you would act on — which turn, which
+// child, where it went. The full plan is --dry-run's job.
+function summaryLine(cut, child, where) {
+  return `forked after "${cut.label}" (turn ${cut.selIdx + 1} of ${cut.total}) → ${child.slice(0, 8)}, ${where}`;
+}
+
+function dryRun({ parent, child, cut, spec, selector, directive }) {
   say('parent', parent);
   if (selector === null) {
     say('matched', `whole conversation — all ${cut.total} turn(s)`);
@@ -374,73 +571,29 @@ function main() {
   );
   say('cut', cut.cutUuid);
   say('child', child);
+  say(
+    'directive',
+    directive
+      ? `"${preview(directive, 56)}" — sent as your first message in the child`
+      : 'none — child opens idle and waits for you',
+  );
+  say('cwd', spec.cwd);
 
-  const prompt = childPrompt(parent, cut.cutUuid, directive);
-  say('directive', directive ? `"${preview(directive, 56)}"` : 'none — child opens idle and waits for you');
-
-  const inv = buildInvocation({ exe: claudeExe(), parent, child, cut, prompt });
-
-  if (flags.has('--dry-run')) {
-    // The prompt is shown separately: it contains newlines, and rendering it
-    // inline would produce a command that looks copy-pasteable but would send
-    // a literal backslash-n.
-    const shown = (inv.input === null ? inv.args.slice(0, -1) : inv.args).map((a) => (/\s/.test(a) ? `"${a}"` : a));
-    console.log('');
-    console.log('would run');
-    const stdin = inv.input === null ? '<prompt>' : '< prompt on stdin';
-    console.log(`  ${[inv.command, ...shown, stdin].join(' ')}`);
-    console.log('');
-    console.log('prompt');
-    for (const line of prompt.split('\n')) console.log(`  ${line}`);
-    return;
-  }
-
+  // The prompt is shown separately: it contains newlines, and rendering it
+  // inline would produce a command that looks copy-pasteable but would send a
+  // literal backslash-n.
+  const prompt = childPrompt(parent, cut.cutUuid);
+  const inv = buildInvocation({ exe: spec.exe, parent, child, cut, prompt });
+  const shown = (inv.input === null ? inv.args.slice(0, -1) : inv.args).map(quoteIfSpaced);
+  const stdin = inv.input === null ? '<prompt>' : '< prompt on stdin';
+  const resume = buildResume({ exe: spec.exe, child, directive: spec.directive });
   console.log('');
-  console.log('creating fork…  (one headless turn over the kept history)');
-  const started = Date.now();
-  const opts = {
-    encoding: 'utf8',
-    input: inv.input === null ? undefined : inv.input,
-    stdio: [inv.input === null ? 'ignore' : 'pipe', 'pipe', 'pipe'],
-    env: cleanEnv(),
-  };
-  const res = inv.shell ? spawnSync(inv.command, { ...opts, shell: true }) : spawnSync(inv.command, inv.args, opts);
-
-  if (res.error) fail(`could not run ${inv.command}: ${res.error.message}`);
-  if (res.status !== 0) {
-    console.error((res.stderr || res.stdout || '').trim());
-    fail(`claude exited ${res.status} — no fork created, nothing recorded`);
-  }
-  console.log(`done in ${Math.round((Date.now() - started) / 1000)}s`);
+  console.log('would open a window that runs');
+  console.log(`  ${[inv.command, ...shown, stdin].join(' ')}`);
+  console.log(`  ${[resume.command, ...resume.args.map(quoteIfSpaced)].join(' ')}`);
   console.log('');
-
-  const ledger = path.join(root, 'fork-tree.jsonl');
-  const entry = {
-    ts: new Date().toISOString(),
-    parent,
-    child,
-    cutUuid: cut.cutUuid,
-    droppedTurns: cut.droppedTurns,
-    matchedPrompt: cut.label,
-    cwd: process.cwd(),
-    // null records "no directive given", rather than storing the boilerplate.
-    directive: directive || null,
-  };
-  try {
-    fs.appendFileSync(ledger, `${JSON.stringify(entry)}\n`, 'utf8');
-    say('ledger', ledger);
-  } catch (e) {
-    note(`could not write the ledger (${e.message}) — the [fork] marker in the child still records the link`);
-  }
-
-  // Two audiences, two strings. The printed one is for you to type later in
-  // your own shell, where PATH is what resolves; the spawned one names the
-  // resolved binary, because the new window inherits no PATH assumption.
-  say('resume', `claude --resume ${child}`);
-
-  if (flags.has('--no-open')) return;
-  const opened = openTerminal(resumeCommand(child));
-  say('opened', opened || 'nothing — no terminal found; run the resume command above');
+  console.log('prompt');
+  for (const line of prompt.split('\n')) console.log(`  ${line}`);
 }
 
 if (require.main === module) runMain(main);
@@ -455,5 +608,11 @@ module.exports = {
   parseSelector,
   parseArgs,
   childPrompt,
+  summaryLine,
   buildInvocation,
+  buildResume,
+  buildSpec,
+  pendingFile,
+  finishCommand,
+  childEnv,
 };

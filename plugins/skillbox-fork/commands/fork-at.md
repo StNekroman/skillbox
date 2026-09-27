@@ -4,31 +4,16 @@ allowed-tools: Bash(node:*)
 argument-hint: "<@id | N | search text> [-- <directive for the child>]"
 ---
 
-Fork this conversation into a new session. The child keeps history up to and including the matched exchange; this session is left untouched.
-
-Run the script and show its output to the user as-is — it is already formatted:
+Run this, passing the arguments as one single-quoted string exactly as typed, `--` included. Write each `'` inside them as `'\''`:
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/scripts/fork-at.js" '$ARGUMENTS'
 ```
 
-Pass the arguments as one single-quoted string, exactly as typed, `--` included — the script splits the selector from the directive itself. Search text routinely carries apostrophes, quotes and `$`, so never leave it unquoted; write each `'` inside it as `'\''`.
+The output is already visible to the user in the tool result. On success it is a single line: do not repeat it, summarise it or add to it — end your turn without writing any text.
 
-Selector, taken from `$ARGUMENTS` before any `--`:
+On a non-zero exit, never retry with different search text yourself.
 
-- `@id` — a turn id as printed by the lists. Stable: it always means the same turn. Prefer this when relaying a choice back to the user.
-- a number — drop that many turns from the end. Counts back from the end, so it shifts as the conversation grows.
-- text — the turn containing it, case-insensitive. Both your prompts and the answers are searched, so you can name something the assistant said. Matching ignores markdown and typography, so a phrase copied from the rendered chat still matches the source it came from: backticks, bold/italic markers, curly quotes, long dashes and line wrapping are all folded away on both sides. If more than one turn matches, the script lists them and exits rather than guessing; relay that list and let the user pick.
-- empty — keep the whole conversation
+If the error lists candidate turns — an ambiguous match, or no match — let the user pick with AskUserQuestion rather than asking in text. One question, header `Fork point`, asking "Fork after which turn? Everything before it is kept too." The list runs oldest to newest: keep that order, one option per candidate, and when there are more than 4, offer the last 4. Label each `Turn N: <gist>` with N from its `turn N of M`; describe it with its `@id`, where it matched, and its indented second line, which is what tells identical prompts apart. The user may instead type an `@id`, a turn number from the list, or new search text. Then run the script once more with the chosen turn's `@id` as the selector — or the new text — keeping any `-- directive` exactly as first typed, and follow these same rules for its output.
 
-`/fork-at` and `/fork-tree` turns are never selectable and never counted. They are machinery, and counting them would both pollute text search and shift every number.
-
-A match anywhere in a turn cuts at the end of that turn, so the whole exchange is kept and a tool call is never split.
-
-Anything after `--` becomes the child's first instruction, and the forked session answers it — so that turn does real work instead of being spent on a summary.
-
-With no directive the child is told only that it was forked and that no task has been given yet, so it acknowledges and waits. Suggest a directive when the user clearly knows what the fork is for; do not add one yourself, since a fork usually exists because the plan is still being decided.
-
-If the script exits non-zero, relay its error and stop. The no-match and ambiguous errors list candidate turns with their `@id` — tell the user to retry with one of those rather than guessing different search text.
-
-On success, confirm in one line: the child session id, that it is open in a new window, and that this session is unchanged.
+Any other error: relay it in one sentence.

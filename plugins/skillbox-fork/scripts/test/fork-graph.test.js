@@ -292,3 +292,66 @@ describe('listTranscripts', () => {
     assert.equal(G.findTranscript(root, 'nope'), null);
   });
 });
+
+describe('sessionCwd', () => {
+  test('the first directory the session recorded', () => {
+    const t = new Transcript(0, '/work/project');
+    t.turn('hi', 'hello');
+    t.add({ type: 'user', origin: { kind: 'human' }, message: { content: 'x' }, cwd: '/later/elsewhere' });
+    assert.equal(G.sessionCwd(t.rows), '/work/project');
+    assert.equal(G.sessionCwd([{ type: 'ai-title' }, { cwd: '' }]), null);
+  });
+});
+
+describe('quoting', () => {
+  test('quoteIfSpaced leaves plain words alone', () => {
+    assert.equal(G.quoteIfSpaced('claude'), 'claude');
+    assert.equal(G.quoteIfSpaced('C:\\Program Files\\x.exe'), '"C:\\Program Files\\x.exe"');
+  });
+
+  test('shq survives a single quote', () => {
+    assert.equal(G.shq("it's"), `'it'\\''s'`);
+  });
+
+  test('terminalCommand changes directory in the syntax of each shell', () => {
+    assert.equal(G.terminalCommand('claude --resume x', 'D:\\My Proj', 'win32'), 'cd /d "D:\\My Proj" && claude --resume x');
+    assert.equal(G.terminalCommand('claude --resume x', "/home/me/it's", 'linux'), `cd '/home/me/it'\\''s' && claude --resume x`);
+    assert.equal(G.terminalCommand('claude', null, 'linux'), 'claude');
+  });
+
+  test('windowsStartCommand adds the outer pair cmd /k strips', () => {
+    assert.equal(G.windowsStartCommand('"a b" "c"'), 'start "" cmd /k ""a b" "c""');
+  });
+});
+
+describe('the window command, run by a real shell', () => {
+  // A directory and a script whose paths carry the characters that break
+  // naive quoting: a space everywhere, a quote on POSIX.
+  function fixture(t, dirName) {
+    const dir = path.join(tempRoot(t), dirName);
+    fs.mkdirSync(dir);
+    const script = path.join(dir, 'echo args.js');
+    fs.writeFileSync(script, 'console.log(JSON.stringify({ argv: process.argv.slice(2), cwd: process.cwd() }))');
+    const cmd = [G.quoteIfSpaced(process.execPath), G.quoteIfSpaced(script), '--finish', G.quoteIfSpaced(path.join(dir, 'spec file.json'))].join(' ');
+    return { dir, cmd };
+  }
+  const { spawnSync } = require('child_process');
+
+  test('cmd.exe runs the wrapped command from the session directory', { skip: process.platform !== 'win32' }, (t) => {
+    const { dir, cmd } = fixture(t, 'my project');
+    // What `start "" cmd /k …` hands to cmd, with /c so it returns.
+    const full = G.windowsStartCommand(G.terminalCommand(cmd, dir, 'win32')).replace(/^start "" cmd \/k /, '');
+    const res = spawnSync('cmd.exe', ['/d', '/c', full], { windowsVerbatimArguments: true, encoding: 'utf8' });
+    const out = JSON.parse(res.stdout.trim());
+    assert.deepEqual(out.argv, ['--finish', path.join(dir, 'spec file.json')]);
+    assert.equal(out.cwd.toLowerCase(), dir.toLowerCase());
+  });
+
+  test('sh runs the command from a directory with a quote in its name', { skip: process.platform === 'win32' }, (t) => {
+    const { dir, cmd } = fixture(t, "it's here");
+    const res = spawnSync('sh', ['-c', G.terminalCommand(cmd, dir, process.platform)], { encoding: 'utf8' });
+    const out = JSON.parse(res.stdout.trim());
+    assert.deepEqual(out.argv, ['--finish', path.join(dir, 'spec file.json')]);
+    assert.equal(fs.realpathSync(out.cwd), fs.realpathSync(dir));
+  });
+});
