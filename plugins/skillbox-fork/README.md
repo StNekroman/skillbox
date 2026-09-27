@@ -40,6 +40,10 @@ candidates and exits.
 The child opens in a new window straight away; the fork is created inside it, which takes a few
 seconds, and the window then becomes the child session, in the parent's project directory.
 
+The child is named `Fork: <your search text>` — or `Fork: <the matched prompt>` when you selected
+by `@id`, by number or with nothing — so it stands out in `claude --resume`'s picker and in the
+fork tree.
+
 Anything after `--` is sent as your first message once the child is open, so it runs where you can
 see it and approve what it does — never unattended. With no directive the child opens idle and
 waits.

@@ -177,7 +177,7 @@ describe('collectEdges', () => {
 describe('cache', () => {
   test('round-trips, and a version mismatch starts cold', (t) => {
     const root = tempRoot(t);
-    G.saveCache(root, { version: 2, files: { f: { size: 1 } } });
+    G.saveCache(root, { version: 3, files: { f: { size: 1 } } });
     assert.deepEqual(G.loadCache(root).files, { f: { size: 1 } });
     fs.writeFileSync(path.join(root, 'fork-tree-cache.json'), JSON.stringify({ version: 1, files: { f: {} } }));
     assert.deepEqual(G.loadCache(root).files, {});
@@ -187,7 +187,7 @@ describe('cache', () => {
 describe('sessionMeta', () => {
   const S = id(1, 0xe);
 
-  test('prefers the ai-title, then last-prompt, then the first prompt', (t) => {
+  test('prefers the custom title, then ai-title, then last-prompt, then the first prompt', (t) => {
     const root = tempRoot(t);
     const tr = new Transcript();
     tr.human('first prompt');
@@ -199,6 +199,13 @@ describe('sessionMeta', () => {
     tr.meta({ type: 'ai-title', aiTitle: 'Real title' });
     writeTranscript(root, S, tr);
     assert.equal(G.sessionMeta(file, null).title, 'Real title');
+
+    // A fork is created with --name, which lands as a custom-title row; the
+    // ai-title copied from the parent may follow it and must not win.
+    tr.meta({ type: 'custom-title', customTitle: 'Fork: my name' });
+    tr.meta({ type: 'ai-title', aiTitle: 'Later ai title' });
+    writeTranscript(root, S, tr);
+    assert.equal(G.sessionMeta(file, null).title, 'Fork: my name');
 
     const plain = new Transcript();
     plain.human('only prompt');

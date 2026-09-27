@@ -217,7 +217,8 @@ describe('fork-at.js — before the fork', () => {
     assert.match(res.stdout, /matched\s+turn 1 of 2 .*\(matched in your prompt\)/);
     assert.match(res.stdout, /directive "don't touch files & wait" — sent as your first message in the child/);
     assert.ok(res.stdout.includes(`cwd       ${s.project}`));
-    assert.match(res.stdout, /would open a window that runs\n {2}\S.* -p --resume abcdef12-\S+ .*--name fork-abcdef12/);
+    assert.ok(res.stdout.includes("name      Fork: B3's cache"), 'named after the search text');
+    assert.match(res.stdout, /would open a window that runs\n {2}\S.* -p --resume abcdef12-\S+ .*--name "Fork: B3's cache"/);
     assert.ok(res.stdout.includes(`--resume ${child} "don't touch files & wait"`));
     assert.match(res.stdout, /prompt\n\s+\[fork\] parent=abcdef12-\S+ cut=\S+\n\s*\n\s+Session forked/);
     assert.equal(readJsonl(s.log).length, 0, 'nothing ran');

@@ -8,7 +8,7 @@ const { spawn, execSync } = require('child_process');
 
 const NOISE_TAGS = /^<(ide_opened_file|ide_selection|system-reminder|command-name|command-message|command-args|local-command-stdout)\b/;
 const MARKER = /\[fork\]\s+parent=([0-9a-f-]{36})\s+cut=([0-9a-f-]{36})/;
-const CACHE_VERSION = 2;
+const CACHE_VERSION = 3;
 
 // ---------------------------------------------------------------- errors
 
@@ -193,18 +193,21 @@ function collectEdges(root, cache) {
 
 // ---------------------------------------------------------------- metadata
 
-// Title preference: the last ai-title row, then the last-prompt row, then the
-// first typed prompt.
+// Title preference: the last custom-title row (/rename, or the --name a fork
+// is created with) wherever it sits, then the last ai-title row, then the
+// last-prompt row, then the first typed prompt.
 function sessionMeta(file, cache) {
   const entry = cache && cacheEntry(cache, file);
   if (entry && entry.meta) return entry.meta;
 
   const meta = { title: '', turns: 0, lastTs: null, cwd: null };
+  let custom = '';
   let lastPrompt = '';
   let firstHuman = '';
   try {
     for (const d of readRows(file)) {
-      if (d.type === 'ai-title' && d.aiTitle) meta.title = d.aiTitle;
+      if (d.type === 'custom-title' && d.customTitle) custom = d.customTitle;
+      else if (d.type === 'ai-title' && d.aiTitle) meta.title = d.aiTitle;
       else if (d.type === 'last-prompt' && d.lastPrompt) lastPrompt = d.lastPrompt;
       if (d.timestamp) meta.lastTs = d.timestamp;
       if (d.cwd && !meta.cwd) meta.cwd = d.cwd;
@@ -215,7 +218,8 @@ function sessionMeta(file, cache) {
     }
   } catch { /* unreadable transcript still gets a placeholder row */ }
 
-  if (!meta.title) meta.title = preview(lastPrompt || firstHuman, 60);
+  if (custom) meta.title = custom;
+  else if (!meta.title) meta.title = preview(lastPrompt || firstHuman, 60);
   if (entry) entry.meta = meta;
   return meta;
 }

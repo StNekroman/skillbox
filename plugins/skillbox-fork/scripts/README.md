@@ -86,8 +86,8 @@ no compatibility promise:
 
 - **Two undocumented flags**, `--resume-session-at` and `--resume-drops-turn`. Both work; neither
   appears in `claude --help`.
-- **Private transcript fields** — `origin.kind`, `forkedFrom`, the `ai-title` and `last-prompt` row
-  types, and `~/.claude/sessions/*.json` for liveness.
+- **Private transcript fields** — `origin.kind`, `forkedFrom`, the `custom-title`, `ai-title` and
+  `last-prompt` row types, and `~/.claude/sessions/*.json` for liveness.
 
 A Claude Code upgrade is the likeliest thing to break this.
 

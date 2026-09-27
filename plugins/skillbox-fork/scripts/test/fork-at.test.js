@@ -117,6 +117,7 @@ describe('resolveCut', () => {
     const cut = F.resolveCut(t.rows, { kind: 'id', value: b.uuid.slice(0, 8) });
     assert.equal(cut.cutUuid, cutAfter(t.rows, c));
     assert.equal(cut.id, b.uuid.slice(0, 8));
+    assert.equal(cut.name, `Fork: ${cut.label}`, 'an id says nothing, so the turn names the fork');
   });
 
   test('an unknown or ambiguous @id fails', () => {
@@ -130,6 +131,7 @@ describe('resolveCut', () => {
     const cut = F.resolveCut(t.rows, { kind: 'text', value: "b3's cache" });
     assert.equal(cut.cutUuid, cutAfter(t.rows, b));
     assert.equal(cut.where, 'your prompt');
+    assert.equal(cut.name, "Fork: b3's cache", 'search text names the fork, as typed');
   });
 
   test('text in the answer selects the turn it belongs to', () => {
@@ -329,7 +331,7 @@ describe('buildResume', () => {
 });
 
 describe('buildSpec', () => {
-  const cut = { cutUuid: 'cut', dropsTurnUuid: 'drop', droppedTurns: 2, label: 'the turn' };
+  const cut = { cutUuid: 'cut', dropsTurnUuid: 'drop', droppedTurns: 2, label: 'the turn', name: 'Fork: the turn' };
 
   test('records the session directory from the transcript, not the caller', () => {
     const t = new Transcript(0, '/work/project');
@@ -337,8 +339,8 @@ describe('buildSpec', () => {
     const spec = F.buildSpec({ root: '/cfg', rows: t.rows, parent: 'P', child: 'C', cut, directive: 'go', env: {}, fallbackCwd: '/somewhere/else' });
     assert.equal(spec.cwd, '/work/project');
     assert.deepEqual(
-      { cutUuid: spec.cutUuid, dropsTurnUuid: spec.dropsTurnUuid, droppedTurns: spec.droppedTurns, label: spec.label, directive: spec.directive },
-      { cutUuid: 'cut', dropsTurnUuid: 'drop', droppedTurns: 2, label: 'the turn', directive: 'go' },
+      { cutUuid: spec.cutUuid, dropsTurnUuid: spec.dropsTurnUuid, droppedTurns: spec.droppedTurns, label: spec.label, name: spec.name, directive: spec.directive },
+      { cutUuid: 'cut', dropsTurnUuid: 'drop', droppedTurns: 2, label: 'the turn', name: 'Fork: the turn', directive: 'go' },
     );
   });
 
@@ -392,12 +394,29 @@ describe('pendingFile', () => {
   });
 });
 
+describe('forkName', () => {
+  test('search text, as typed, else the matched prompt', () => {
+    assert.equal(F.forkName({ kind: 'text', value: "B3's  cache" }, 'ignored'), "Fork: B3's cache");
+    assert.equal(F.forkName({ kind: 'id', value: 'abcd' }, 'the turn'), 'Fork: the turn');
+    assert.equal(F.forkName({ kind: 'offset', value: 1 }, 'the turn'), 'Fork: the turn');
+    assert.equal(F.forkName(null, 'the turn'), 'Fork: the turn');
+  });
+
+  test('is one line and no longer than a picker row', () => {
+    const name = F.forkName({ kind: 'text', value: `${'x'.repeat(80)}\nmore` }, '');
+    assert.ok(!name.includes('\n'));
+    assert.equal(name, `Fork: ${'x'.repeat(55)}…`);
+    assert.equal(F.forkName(null, ''), 'Fork');
+  });
+});
+
 describe('buildInvocation', () => {
   const base = {
     parent: 'aaaaaaaa-0000-4000-8000-000000000000',
     child: 'cccccccc-0000-4000-8000-000000000000',
     cut: { cutUuid: 'dddddddd-0000-4000-8000-000000000000', dropsTurnUuid: 'eeeeeeee-0000-4000-8000-000000000000' },
     prompt: "[fork] parent=a cut=d\n\nfix B3's \"bug\" & $HOME",
+    name: 'Fork: B3\'s "cache" & the\ttests',
   };
 
   test('a real binary gets the prompt as its last argument, with no shell', () => {
@@ -410,7 +429,7 @@ describe('buildInvocation', () => {
       '--resume-drops-turn',
       base.cut.dropsTurnUuid,
     ]);
-    assert.equal(inv.args[inv.args.indexOf('--name') + 1], 'fork-aaaaaaaa');
+    assert.equal(inv.args[inv.args.indexOf('--name') + 1], base.name, 'the name is passed untouched');
   });
 
   test('on POSIX a bare claude is still spawned without a shell', () => {
@@ -426,8 +445,10 @@ describe('buildInvocation', () => {
     assert.equal(inv.shell, true);
     assert.equal(inv.input, base.prompt);
     assert.deepEqual(inv.args, [], 'one pre-joined string, no argument list alongside the shell');
-    assert.match(inv.command, /^claude -p --resume aaaaaaaa-\S+ .*--name fork-aaaaaaaa$/);
-    for (const w of inv.command.split(' ')) assert.match(w, /^[\w.:-]+$/, `word ${w} would need quoting`);
+    const [head, name] = inv.command.split(' --name ');
+    assert.match(head, /^claude -p --resume aaaaaaaa-\S+ /);
+    for (const w of head.split(' ')) assert.match(w, /^[\w.:-]+$/, `word ${w} would need quoting`);
+    assert.equal(name, `"Fork: B3's 'cache' & the tests"`, 'one quoted word with no quote inside it');
   });
 
   test('a shelled path with a space is quoted', () => {

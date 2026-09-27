@@ -177,6 +177,7 @@ function resolveCut(rows, selector) {
     fail('the matched turn is the first in the session — there is nothing to keep before it');
   }
 
+  const label = preview(texts[chosen.ai].prompt, 56);
   return {
     selIdx,
     total: sel.length,
@@ -186,10 +187,22 @@ function resolveCut(rows, selector) {
     // Anything else — dropped turns, or hidden fork-at turns in between — spans
     // more than one turn and the guard would refuse it.
     dropsTurnUuid: chosen.ai === all.length - 2 ? all[all.length - 1].uuid : null,
-    label: preview(texts[chosen.ai].prompt, 56),
+    label,
+    name: forkName(selector, label),
     id: chosen.uuid.slice(0, 8),
     where,
   };
+}
+
+// The child's session name, as the `claude --resume` picker and the fork tree
+// show it. Your search text when you gave one — it is the phrase you already
+// think of the fork by — else the matched turn's prompt, since an @id or a
+// count says nothing on its own. One line: a name cannot carry a newline.
+const NAME_WIDTH = 56;
+
+function forkName(selector, label) {
+  const text = preview(selector && selector.kind === 'text' ? selector.value : label, NAME_WIDTH);
+  return text ? `Fork: ${text}` : 'Fork';
 }
 
 // ---------------------------------------------------------------- output
@@ -327,10 +340,11 @@ function childPrompt(parent, cutUuid) {
 // arguments with spaces and quotes nothing, and cmd.exe cannot carry a newline
 // in an argument at all. When a shell is unavoidable, the prompt goes on stdin
 // — `claude -p` reads it from there when no prompt argument is given — and
-// every argument left is a flag or an id, which no shell can mangle. They are
-// joined into one command string here, because Node deprecates passing an
-// argument list alongside a shell.
-function buildInvocation({ exe, parent, child, cut, prompt, platform = process.platform }) {
+// every argument left is a flag or an id, which no shell can mangle, except
+// the name, which is your own words and travels the way a directive does.
+// They are joined into one command string here, because Node deprecates
+// passing an argument list alongside a shell.
+function buildInvocation({ exe, parent, child, cut, prompt, name, platform = process.platform }) {
   const shell = needsShell(exe, platform);
   const args = [
     '-p',
@@ -343,25 +357,29 @@ function buildInvocation({ exe, parent, child, cut, prompt, platform = process.p
     cut.cutUuid,
     ...(cut.dropsTurnUuid ? ['--resume-drops-turn', cut.dropsTurnUuid] : []),
     '--name',
-    `fork-${parent.slice(0, 8)}`,
   ];
   if (shell) {
-    return { command: [quoteIfSpaced(exe), ...args].join(' '), args: [], input: prompt, shell };
+    return { command: [quoteIfSpaced(exe), ...args, cmdWord(name)].join(' '), args: [], input: prompt, shell };
   }
-  return { command: exe, args: [...args, prompt], input: null, shell };
+  return { command: exe, args: [...args, name, prompt], input: null, shell };
+}
+
+// One argument through cmd.exe, as exact as cmd allows. A `"` inside toggles
+// cmd's quoting and exposes `&` and `|` to it, so double quotes become single
+// ones and whitespace is flattened. Only the bare `claude` on Windows goes
+// this way, rare in practice; everywhere else arguments are passed untouched.
+function cmdWord(s) {
+  return `"${String(s).replace(/"/g, "'").replace(/\s+/g, ' ')}"`;
 }
 
 // The interactive session the window ends in, with the directive as its first
 // message. Stdin is the terminal here, so a directive can only travel as an
-// argument. Through cmd.exe that argument cannot be made exact: a `"` inside
-// toggles cmd's quoting and exposes `&` and `|` to it. So on that path — a
-// bare `claude` on Windows, rare in practice — double quotes become single
-// ones and whitespace is flattened. Everywhere else it is passed untouched.
+// argument — through cmd.exe, as exact as cmdWord can make it.
 function buildResume({ exe, child, directive, platform = process.platform }) {
   const shell = needsShell(exe, platform);
   if (shell) {
     const words = [quoteIfSpaced(exe), '--resume', child];
-    if (directive) words.push(`"${directive.replace(/"/g, "'").replace(/\s+/g, ' ')}"`);
+    if (directive) words.push(cmdWord(directive));
     return { command: words.join(' '), args: [], shell };
   }
   return { command: exe, args: ['--resume', child, ...(directive ? [directive] : [])], shell };
@@ -392,6 +410,7 @@ function buildSpec({ root, rows, parent, child, cut, directive, env = process.en
     dropsTurnUuid: cut.dropsTurnUuid,
     droppedTurns: cut.droppedTurns,
     label: cut.label,
+    name: cut.name,
     directive: directive || null,
   };
 }
@@ -445,7 +464,7 @@ function existingDir(dir) {
 function createFork(spec, { quiet = false } = {}) {
   const prompt = childPrompt(spec.parent, spec.cutUuid);
   const cut = { cutUuid: spec.cutUuid, dropsTurnUuid: spec.dropsTurnUuid };
-  const inv = buildInvocation({ exe: spec.exe, parent: spec.parent, child: spec.child, cut, prompt });
+  const inv = buildInvocation({ exe: spec.exe, parent: spec.parent, child: spec.child, cut, prompt, name: spec.name });
 
   if (!quiet) console.log('creating fork…  (one headless turn over the kept history)');
   const started = Date.now();
@@ -571,6 +590,7 @@ function dryRun({ parent, child, cut, spec, selector, directive }) {
   );
   say('cut', cut.cutUuid);
   say('child', child);
+  say('name', spec.name);
   say(
     'directive',
     directive
@@ -583,7 +603,7 @@ function dryRun({ parent, child, cut, spec, selector, directive }) {
   // inline would produce a command that looks copy-pasteable but would send a
   // literal backslash-n.
   const prompt = childPrompt(parent, cut.cutUuid);
-  const inv = buildInvocation({ exe: spec.exe, parent, child, cut, prompt });
+  const inv = buildInvocation({ exe: spec.exe, parent, child, cut, prompt, name: spec.name });
   const shown = (inv.input === null ? inv.args.slice(0, -1) : inv.args).map(quoteIfSpaced);
   const stdin = inv.input === null ? '<prompt>' : '< prompt on stdin';
   const resume = buildResume({ exe: spec.exe, child, directive: spec.directive });
@@ -604,6 +624,7 @@ module.exports = {
   normalize,
   turnTexts,
   resolveCut,
+  forkName,
   snippet,
   parseSelector,
   parseArgs,
