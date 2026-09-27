@@ -110,13 +110,15 @@ issue, so it becomes a browse URL rather than a code span:
 ships and the token is capped to the session's lifetime.</p>
 ```
 
-A draft with no id yet stays a code span. It becomes a URL when its own push happens, and the phase
-that rewrites inbound references will come back and update this one.
+A draft with no id yet stays a code span, and in this issue it stays one: a later push of that draft
+rewrites the files that cite it, not descriptions already in Jira. The stale code span is an
+accepted cost.
 
 Inside `Related tickets`, `Blocks` and `Blocked by` the rule is different: an entry naming a real
 issue is not written into the body at all. It leaves the description and becomes a Jira issue link,
 and the section goes with it when nothing else is left. See `Phase 3` in the skill. Entries in those
-sections naming a draft with no key are ordinary list items and keep the code span.
+sections naming a draft with no key are ordinary list items and keep the code span; the link
+arrives later, from that draft's own push.
 
 ## Escaping
 

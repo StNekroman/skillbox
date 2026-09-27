@@ -20,7 +20,7 @@ Six phases, in order, for one draft:
 
 Nothing after phase 1 runs before you approve.
 
-## Why phases 3 to 5 are not optional
+## Why phases 4 and 5 are not optional
 
 A draft that moves without them leaves dead links in every ADR, spec and sibling draft that named
 it. They fail silently — the link still renders, and a reader only finds out by following it.

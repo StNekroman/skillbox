@@ -2,7 +2,7 @@
 name: draft-ticket
 description: Write or update a ticket draft as a markdown file under the repository’s ticket-draft directory, using a fixed ticket structure. Use when chat research has settled enough to be flushed into one or more ticket files; do not use to create, edit, transition, or comment on items in an issue tracker.
 metadata:
-  prompt-version: "2026-09-27.1"
+  prompt-version: "2026-09-27.2"
 ---
 
 # Draft a Ticket
@@ -17,8 +17,9 @@ Read `.skillbox/tickets.json` under the repository root before writing anything.
 `paths.draftRoot`, `paths.docRoots`, `domainNotes`, and `jira.site` for citing issues.
 
 If it is not there, run the init described in [the configuration reference](../../CONFIG.md),
-then carry on with the request. That init asks about Jira only when a ticket in this
-conversation carries a Jira key — writing a draft does not need a tracker.
+then carry on with the request. If it is there but has no `jira.site` while a ticket in this
+conversation carries a Jira key, ask for the site and add it, as the same reference describes.
+Either way Jira comes up only when a key is in play — writing a draft does not need a tracker.
 
 ## Accepted input
 
@@ -77,7 +78,7 @@ A reference has an id when either is true:
 | The thing being cited | How to write it |
 |---|---|
 | Has a Jira id | `[PROJ-319 — Concurrent edits overwrite each other silently](<site>/browse/PROJ-319)`, with `<site>` from config |
-| Is a draft with no id | `[Give a notification a read state](B2-notification-read-state.md)` |
+| Is a draft with no id | `[Give a notification a read state](feature-notification-read-state.md)` |
 | Is an ADR, spec or tech doc | a relative path, always — those are documents, not tickets |
 
 This applies everywhere in the file, not only in `Related tickets`, `Blocked by` and `Blocks`. A key named mid-sentence is a citation too and takes the same link.
@@ -187,7 +188,7 @@ together or the badge alternates between two meanings.
 ```
 
 - Number them in the order written, from `BR-1` upward.
-- **Ids are permanent.** Append a new entry at the end. Never renumber, and never reuse the id of one you removed — a review report, a PR comment or a verification record may already cite it. `review-with-blast` preserves these ids rather than reassigning them.
+- **Ids are permanent.** Append a new entry at the end. Never renumber, and never reuse the id of one you removed — a review report, a PR comment or a verification record may already cite it.
 - The title states the reach, not the risk: "The signal crosses api-gateway, which re-declares the payload shape", not "api-gateway might break".
 - The block under it says what the entry touches, the path by which the change gets there, and what bounds it. Cite files and lines.
 - Other sections may cite an id. A test matrix row reading `covers BR-2` is worth more than writing the same case twice.
@@ -225,18 +226,20 @@ One line per entry: the link, the title, and why it blocks. A bare link does not
 ## Blocked by
 
 - [PROJ-319 — Concurrent edits overwrite each other silently](https://example.atlassian.net/browse/PROJ-319) — supplies the version column the retry check reads.
-- [Give a notification a read state](B2-notification-read-state.md) — needs the mark-read operation and the by-subject route.
+- [Give a notification a read state](feature-notification-read-state.md) — needs the mark-read operation and the by-subject route.
 
 ## Blocks
 
-- [Clear notifications on task completion](bug-B2-clear-notifications-on-task-completion.md) — has nothing to mark read until this lands.
+- [Notifications survive task completion](bug-notifications-survive-task-completion.md) — has nothing to mark read until this lands.
 ```
 
 The first entry has a Jira id, the others do not. That is the only thing deciding which form each link takes.
 
 - Link an entry by the rule in `Citing a ticket that is already in Jira`, as in `Related tickets`.
 - A blocker outside this repository — another team's work, an infrastructure change, a decision nobody has made — is still an entry. Name it and name who owns it, with no link.
-- The two directions have to agree across files. When you write both tickets in the same pass, state the relation in both. When the other file already exists and you are not writing it, say so in the report at the end and let the user decide whether to update it.
+- **Write every relation into both files.** `Blocked by` here is `Blocks` there, and the reverse; `related` stays `related`, and `parent of` becomes `child of`. When the other ticket is a draft, add the reverse entry to its file even if you are not otherwise writing it: read it, add one line to the matching section — creating the section in its template position if it has none — and change nothing else. Write that line's reason from the other ticket's point of view.
+- A relation written on one side only is lost if that side is pushed first. `jira-push-ticket` creates a Jira link only from an entry naming an issue, so the link has to come from the draft pushed second — and that draft can only create it if it names the first.
+- When the other ticket already has a Jira id, write no reverse entry. It is not a draft any more, and a `<KEY>.md` file left for it is only a snapshot. The link is created from this side when this draft is pushed.
 - `Blocked by` is not `related`. If this ticket can ship first and still be correct, the other ticket belongs in `Related tickets`.
 
 ## Fields
@@ -293,7 +296,7 @@ Keep the fields consistent with the body. `Severity` must match `Risk if not imp
 
 Report to the user:
 
-- each path written, as a clickable relative link;
+- each path written, as a clickable relative link, including a sibling that only received a reverse relation entry;
 - the `Type`, `Severity` and `Complexity` assigned to each, so a wrong call can be corrected in one line;
 - the sections you left out where a reader might expect one, in a few words each, so the user can fill a real gap;
 - the open questions that remain, as a short list they can answer in chat.

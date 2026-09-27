@@ -62,8 +62,7 @@ brings it along:
 }
 ```
 
-That is `.mcp.json` at the plugin root. Note the shape: a plugin's `.mcp.json` is a bare map of
-server name to config, **not** wrapped in `"mcpServers"` the way a repository's own `.mcp.json` is.
+That is `.mcp.json` at the plugin root.
 
 Authentication is OAuth, handled by the server on first use — nothing to configure here and no
 secret to store. Expect a sign-in prompt the first time the skill reaches Jira.

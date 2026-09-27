@@ -50,6 +50,12 @@ asked — the init is a step inside the work, not a reason to stop and hand it b
    the severity mapping — is `skillbox-jira`'s init, run when `jira-push-ticket` is first used.
 4. **Write the file**, then say in one line what was written and that it is meant to be committed.
 
+## When `jira.site` is missing
+
+A file with no `jira` block is complete for drafting; leave it alone. Only when a ticket in the
+conversation carries a Jira key, ask for the site URL alone and add it as `jira.site`, leaving the
+rest of the file untouched. Say in one line what was added.
+
 ## What else lives in `.skillbox/`
 
 Committed, because the team shares it:

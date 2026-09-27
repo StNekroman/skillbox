@@ -2,22 +2,23 @@
 name: jira-push-ticket
 description: Create a Jira issue from a ticket draft file using the official Atlassian MCP server, optionally under a parent epic, then rewrite inbound references across the repository and rename the draft to its issue key. Use when a settled draft in the repository’s ticket-draft directory should become a real Jira issue; do not use to write the draft in the first place, and do not use to review or transition existing issues.
 metadata:
-  prompt-version: "2026-09-27.1"
+  prompt-version: "2026-09-27.2"
 ---
 
 # Push a Ticket Draft to Jira
 
 Turn a markdown ticket draft into a Jira issue, then leave the repository consistent with the move.
 
-Five things happen, in this order, for each draft:
+Six phases run, in this order, for each draft:
 
-1. the issue is created, with a description that reads as well in Jira as the file does in an editor;
-2. its relationships to sibling issues become real Jira links, not prose;
-3. every file that references the draft is rewritten to point at the issue;
-4. the draft is renamed to its issue key;
-5. the result is verified.
+1. a plan is presented, and nothing is written until the user approves it;
+2. the issue is created, with a description that reads as well in Jira as the file does in an editor;
+3. its relationships to sibling issues become real Jira links, not prose;
+4. every file that references the draft is rewritten to point at the issue;
+5. the draft is renamed to its issue key;
+6. the result is verified.
 
-Steps 3 and 4 are not optional extras. A draft that moves without them leaves dead links behind, in
+Phases 4 and 5 are not optional extras. A draft that moves without them leaves dead links behind, in
 every ADR, spec and sibling draft that named it. They fail silently: the link still renders, and a
 reader only finds it is dead by following it. A repository that has pushed drafts before is likely
 to hold some already — grep for one if you want to see what this step prevents.
@@ -240,7 +241,10 @@ link shows on both issues, survives the description being rewritten, and drives 
 dependency views — none of which a bullet in a description does.
 
 Only entries naming an issue become links. An entry naming a draft with no key stayed in the body,
-and stays there until that draft's own push comes back for it.
+and nothing comes back to edit it: a later push rewrites the files that cite this draft, not this
+issue's description. The link still arrives. `draft-ticket` writes every relation into both drafts,
+and phase 4 below points the other draft at this issue, so the other draft's own push creates the
+link — and a link shows on both issues. The entry left in this body is an accepted cost.
 
 ## The two link types
 
@@ -352,6 +356,10 @@ bullet in this phase — the file name has just taken over the job.
 A converted draft is renamed and nothing more. It is not emptied, not reduced to a link, and not
 deleted: it stays the readable copy of what was agreed, next to its siblings.
 
+From here on the Jira issue is the ticket. The file is a snapshot of what was agreed at push time:
+nothing syncs it with the issue in either direction, and the user may delete it without losing
+anything.
+
 ---
 
 # Phase 6 — Verify
@@ -391,10 +399,13 @@ Two reasons, and the second is the one that bites:
   or A ships citing a file path that is about to disappear.
 
 So order the queue by citation. Push the most-cited drafts first and the ones that cite others last.
+Count only citations outside `Related tickets`, `Blocks` and `Blocked by`. `draft-ticket` writes
+those sections on both sides of a relation, so they cannot set an order, and they do not need one:
+whichever draft goes second creates the link, and the link shows on both issues.
 
-When two drafts cite each other, no order satisfies both. Push them in either order, then go back
-and fix the first one's body with `editJiraIssue`. Say in the report that you did, so the extra
-edit is not a surprise in the issue history.
+When two drafts cite each other outside those sections, no order satisfies both. Push them in either
+order, then go back and fix those citations in the first one's body with `editJiraIssue`. Say in
+the report that you did, so the extra edit is not a surprise in the issue history.
 
 ---
 
