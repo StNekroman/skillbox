@@ -91,6 +91,26 @@ function sessionCwd(rows) {
   return hit ? hit.cwd : null;
 }
 
+// The error for a session directory that is gone. With it gone there is
+// nowhere to resume from — see sessionCwd — and the store is Claude Code's,
+// so the transcript is never moved from here; the remedies are spelled out
+// instead. The transcript's folder is named because it is the one path you
+// could not otherwise find.
+function missingCwdMessage(cwd, transcriptFile) {
+  const lines = [
+    `${cwd} no longer exists — claude --resume looks a session up from the directory it was started in.`,
+    'Recreate the directory and try again.',
+  ];
+  if (transcriptFile) {
+    lines.push(
+      'If the project moved, start a session at its new location once, then move the contents of',
+      `  ${path.dirname(transcriptFile)}`,
+      'into the folder Claude Code created for it.',
+    );
+  }
+  return lines.join('\n');
+}
+
 function preview(text, width) {
   const flat = String(text || '').replace(/\s+/g, ' ').trim();
   return flat.length > width ? `${flat.slice(0, width - 1)}…` : flat;
@@ -120,6 +140,46 @@ function cacheEntry(cache, file) {
   const fresh = { size: st.size, mtimeMs: st.mtimeMs };
   cache.files[file] = fresh;
   return fresh;
+}
+
+// Drops the entries for transcripts that are gone. Nothing reads a stale entry
+// — every lookup starts from the files on disk — but nothing else removes one
+// either, and the cache would otherwise grow with every session ever seen.
+function pruneCache(cache, transcripts) {
+  const keep = new Set(transcripts.map((t) => t.file));
+  for (const file of Object.keys(cache.files)) {
+    if (!keep.has(file)) delete cache.files[file];
+  }
+}
+
+// ---------------------------------------------------------------- hand-offs
+
+// fork-at hands the window everything it needs in a file under fork-pending/,
+// and the window deletes it as it starts. A window that never started leaves
+// its file behind for good — nothing else would ever touch it — so both
+// scripts sweep the folder as they start. The cutoff is generous: a window
+// reads its hand-off within seconds of opening, so anything this old belongs
+// to a window that is not coming.
+const PENDING_MAX_AGE_MS = 10 * 60 * 1000;
+
+function pendingDir(root) {
+  return path.join(root, 'fork-pending');
+}
+
+function sweepPending(root, { now = Date.now(), maxAgeMs = PENDING_MAX_AGE_MS } = {}) {
+  let names;
+  try { names = fs.readdirSync(pendingDir(root)); } catch { return []; }
+  const swept = [];
+  for (const name of names) {
+    if (!name.endsWith('.json')) continue;
+    const file = path.join(pendingDir(root), name);
+    try {
+      if (now - fs.statSync(file).mtimeMs < maxAgeMs) continue;
+      fs.unlinkSync(file);
+      swept.push(file);
+    } catch { /* picked up meanwhile, or not ours to remove */ }
+  }
+  return swept;
 }
 
 // ---------------------------------------------------------------- edges
@@ -380,9 +440,13 @@ module.exports = {
   isHumanPrompt,
   promptText,
   sessionCwd,
+  missingCwdMessage,
   preview,
   loadCache,
   saveCache,
+  pruneCache,
+  pendingDir,
+  sweepPending,
   collectEdges,
   scanForEdge,
   sessionMeta,

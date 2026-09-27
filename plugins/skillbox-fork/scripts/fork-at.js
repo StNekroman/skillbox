@@ -394,7 +394,7 @@ function buildResume({ exe, child, directive, platform = process.platform }) {
 // directory would all be lost. The directive travels here too, which keeps it
 // off a command line that four different shells would each quote differently.
 function pendingFile(root, child) {
-  return path.join(root, 'fork-pending', `${child}.json`);
+  return path.join(G.pendingDir(root), `${child}.json`);
 }
 
 function buildSpec({ root, rows, parent, child, cut, directive, env = process.env, fallbackCwd = process.cwd() }) {
@@ -423,15 +423,23 @@ function writeSpec(spec) {
 }
 
 function readSpec(file) {
+  let text;
+  try {
+    text = fs.readFileSync(file, 'utf8');
+  } catch (e) {
+    fail(`cannot read the fork hand-off ${file}: ${e.message}`);
+  }
+  // One use only: a hand-off replayed later would create a second child.
+  // Removed before it is judged, so one this script cannot use does not
+  // linger either.
+  try { fs.unlinkSync(file); } catch { /* already gone is fine */ }
   let spec;
   try {
-    spec = JSON.parse(fs.readFileSync(file, 'utf8'));
+    spec = JSON.parse(text);
   } catch (e) {
     fail(`cannot read the fork hand-off ${file}: ${e.message}`);
   }
   if (!spec || spec.version !== 1) fail(`unrecognised fork hand-off ${file}`);
-  // One use only: a hand-off replayed later would create a second child.
-  try { fs.unlinkSync(file); } catch { /* already gone is fine */ }
   return spec;
 }
 
@@ -449,10 +457,13 @@ function childEnv(spec, base = cleanEnv()) {
   return env;
 }
 
-// Only a directory that still exists; spawning into a missing one fails
-// outright rather than falling back.
-function existingDir(dir) {
-  return dir && fs.existsSync(dir) ? dir : undefined;
+// The session's directory has to exist before anything is launched: claude
+// --resume looks the parent up from there, and from anywhere else the window
+// would open only to show "no conversation found". Checked in the parent, so
+// no window opens for nothing, and again in the window, whose hand-off may
+// outlive the directory.
+function requireCwd(cwd, transcriptFile) {
+  if (!fs.existsSync(cwd)) fail(G.missingCwdMessage(cwd, transcriptFile));
 }
 
 // ---------------------------------------------------------------- the fork
@@ -472,7 +483,7 @@ function createFork(spec, { quiet = false } = {}) {
     encoding: 'utf8',
     input: inv.input === null ? undefined : inv.input,
     stdio: [inv.input === null ? 'ignore' : 'pipe', 'pipe', 'pipe'],
-    cwd: existingDir(spec.cwd),
+    cwd: spec.cwd,
     env: childEnv(spec),
   };
   const res = inv.shell ? spawnSync(inv.command, { ...opts, shell: true }) : spawnSync(inv.command, inv.args, opts);
@@ -506,10 +517,11 @@ function createFork(spec, { quiet = false } = {}) {
 // The window's half: create the fork, then become the child session.
 function finish(specFile) {
   const spec = readSpec(specFile);
+  requireCwd(spec.cwd, findTranscript(spec.root, spec.parent));
   createFork(spec);
   console.log('');
   const inv = buildResume({ exe: spec.exe, child: spec.child, directive: spec.directive });
-  const opts = { stdio: 'inherit', cwd: existingDir(spec.cwd), env: childEnv(spec) };
+  const opts = { stdio: 'inherit', cwd: spec.cwd, env: childEnv(spec) };
   const res = inv.shell ? spawnSync(inv.command, { ...opts, shell: true }) : spawnSync(inv.command, inv.args, opts);
   if (res.error) fail(`could not run ${inv.command}: ${res.error.message}`);
   process.exit(res.status === null ? 1 : res.status);
@@ -524,6 +536,7 @@ function main() {
   const { flags, selector, directive } = parseArgs(argv);
 
   const root = configRoot();
+  G.sweepPending(root);
   const parent = process.env.CLAUDE_CODE_SESSION_ID;
   if (!parent) {
     fail('CLAUDE_CODE_SESSION_ID is not set — run this from inside a Claude Code session');
@@ -539,6 +552,7 @@ function main() {
   const spec = buildSpec({ root, rows, parent, child, cut, directive });
 
   if (flags.has('--dry-run')) return dryRun({ parent, child, cut, spec, selector, directive });
+  requireCwd(spec.cwd, transcript);
 
   // Two audiences, two strings. The printed one is for you to type later in
   // your own shell, where PATH is what resolves; the window gets the resolved
@@ -597,7 +611,9 @@ function dryRun({ parent, child, cut, spec, selector, directive }) {
       ? `"${preview(directive, 56)}" — sent as your first message in the child`
       : 'none — child opens idle and waits for you',
   );
-  say('cwd', spec.cwd);
+  // A dry run reports the missing directory where a real run would refuse on
+  // it, and still shows the rest of the plan.
+  say('cwd', fs.existsSync(spec.cwd) ? spec.cwd : `${spec.cwd}   (missing — a real run stops here)`);
 
   // The prompt is shown separately: it contains newlines, and rendering it
   // inline would produce a command that looks copy-pasteable but would send a

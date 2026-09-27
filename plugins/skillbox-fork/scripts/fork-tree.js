@@ -132,6 +132,9 @@ function decorate(rows, root, cache, edges, focus, live, focusCwd) {
     if (meta.cwd && focusCwd && meta.cwd.toLowerCase() !== focusCwd.toLowerCase()) {
       tags.push(path.basename(meta.cwd));
     }
+    // A directory that is gone cannot be resumed from. Said in the row, where
+    // you pick, not only after the pick.
+    if (meta.cwd && !fs.existsSync(meta.cwd)) tags.push('dir missing');
     return {
       ...r,
       isFocus: r.id === focus,
@@ -140,6 +143,7 @@ function decorate(rows, root, cache, edges, focus, live, focusCwd) {
       turns: meta.turns ? `[${meta.turns} turn${meta.turns === 1 ? '' : 's'}]` : '',
       age: age(meta.lastTs),
       cwd: meta.cwd,
+      file: t ? t.file : null,
       tags,
     };
   });
@@ -241,9 +245,12 @@ function buildForest(edges, kids) {
 
 // A session is resumed from the directory it was started in: Claude Code
 // files it under that project, and looks it up from where `--resume` runs.
-function openSession(id, inPlace, cwd) {
+// So a session whose directory is gone is refused here, with the directory
+// named, rather than opened into a window that can only say "not found".
+function openSession(id, inPlace, cwd, file) {
+  if (cwd && !fs.existsSync(cwd)) fail(G.missingCwdMessage(cwd, file));
   const exe = G.claudeExe();
-  const dir = cwd && fs.existsSync(cwd) ? cwd : undefined;
+  const dir = cwd || undefined;
   if (inPlace) {
     // Through a shell, one pre-joined string: Node deprecates an argument list
     // alongside a shell, and a session id needs no quoting.
@@ -295,7 +302,14 @@ function interactive(rows, startIdx) {
       process.stdin.setRawMode(false);
       process.stdin.pause();
       process.stdout.write('\n');
-      fn();
+      // main returned long ago, so runMain is not here to print a CliError.
+      try {
+        fn();
+      } catch (e) {
+        if (!(e instanceof G.CliError)) throw e;
+        console.error(`Error: ${e.message}`);
+        process.exit(1);
+      }
     };
     if (key.name === 'up' || key.name === 'k') {
       pos = (pos - 1 + pickable.length) % pickable.length;
@@ -304,8 +318,8 @@ function interactive(rows, startIdx) {
       pos = (pos + 1) % pickable.length;
       draw(false);
     } else if (key.name === 'return') {
-      const { id, cwd } = rows[pickable[pos]];
-      done(() => openSession(id, true, cwd));
+      const { id, cwd, file } = rows[pickable[pos]];
+      done(() => openSession(id, true, cwd, file));
     } else if (key.name === 'q' || key.name === 'escape' || (key.ctrl && key.name === 'c')) {
       done(() => process.exit(0));
     }
@@ -336,11 +350,15 @@ function main() {
   if (flags.has('--no-color')) COLOR = false;
 
   const root = G.configRoot();
+  G.sweepPending(root);
   const cache = G.loadCache(root);
   const focus = resolveFocus(root, cache, words.join(' ').trim() || null);
 
   const edges = G.collectEdges(root, cache);
   const kids = invert(edges);
+  // Every transcript on disk has been visited by now; what the cache still
+  // holds beyond those is gone for good.
+  G.pruneCache(cache, G.listTranscripts(root));
 
   const live = G.liveSessions(root);
   const focusFile = focus && G.findTranscript(root, focus);
@@ -359,7 +377,7 @@ function main() {
   if (openIdx !== null) {
     const r = rows[openIdx - 1];
     if (!r || r.cycle) fail(`no node numbered ${openIdx}`);
-    openSession(r.id, false, r.cwd);
+    openSession(r.id, false, r.cwd, r.file);
     return;
   }
 

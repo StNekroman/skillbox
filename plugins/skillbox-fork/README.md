@@ -64,6 +64,10 @@ Run from a plain shell there is no current session, so it lists every fork tree 
 Run in a real terminal it gets arrow-key navigation and can switch session in place — that needs a
 TTY, which a slash command does not have.
 
+A session whose project directory has since been deleted or moved is tagged `dir missing` and is not
+opened: Claude Code looks a session up from the directory it was started in. The error names that
+directory, and the transcript folder to move if the project has relocated.
+
 ## Requirements
 
 Node. Developed against v22; anything with `crypto.randomUUID` will do.

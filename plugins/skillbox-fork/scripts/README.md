@@ -37,7 +37,9 @@ The hand-off carries everything the window needs, because a window cannot be tru
 Terminal.app, iTerm and gnome-terminal start from a fresh environment in your home directory. So the
 config directory, the resolved binary and the project directory all travel in the file, and the
 window changes into the project directory itself — a session resumed from the wrong directory is
-looked up in the wrong project.
+looked up in the wrong project. A project directory that no longer exists stops either stage with an
+error naming it, and the transcript folder to move if the project has relocated, rather than a
+window that opens only to report the session not found.
 
 The headless turn only ever carries the idle prompt. A directive never runs unattended.
 
@@ -96,8 +98,10 @@ A Claude Code upgrade is the likeliest thing to break this.
 In the config directory, all additive and safe to delete:
 
 - `fork-tree.jsonl` — one line per fork: parent, child, cut point.
-- `fork-tree-cache.json` — size/mtime cache so the tree does not reparse every transcript.
+- `fork-tree-cache.json` — size/mtime cache so the tree does not reparse every transcript. Entries
+  for transcripts that no longer exist are dropped each time it is saved.
 - `fork-pending/` — hand-off files between the two stages of a fork, each deleted when its window
-  picks it up. One left behind means a window that never started.
+  picks it up. One left behind means a window that never started; both scripts sweep anything older
+  than ten minutes as they start.
 
 Transcripts themselves are only ever read.

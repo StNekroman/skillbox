@@ -182,6 +182,53 @@ describe('cache', () => {
     fs.writeFileSync(path.join(root, 'fork-tree-cache.json'), JSON.stringify({ version: 1, files: { f: {} } }));
     assert.deepEqual(G.loadCache(root).files, {});
   });
+
+  test('pruneCache forgets transcripts that are gone', (t) => {
+    const root = tempRoot(t);
+    const kept = writeTranscript(root, 'kept', '');
+    const gone = path.join(root, 'projects', 'd--proj', 'gone.jsonl');
+    const cache = { version: 3, files: { [kept]: { size: 0 }, [gone]: { size: 9 } } };
+    G.pruneCache(cache, G.listTranscripts(root));
+    assert.deepEqual(Object.keys(cache.files), [kept]);
+  });
+});
+
+describe('sweepPending', () => {
+  test('removes hand-offs past the cutoff, keeps the rest, and reports what went', (t) => {
+    const root = tempRoot(t);
+    const dir = G.pendingDir(root);
+    fs.mkdirSync(dir);
+    const write = (name, ageMs) => {
+      const file = path.join(dir, name);
+      fs.writeFileSync(file, '{}');
+      const at = new Date(Date.now() - ageMs);
+      fs.utimesSync(file, at, at);
+      return file;
+    };
+    const stale = write('stale.json', 11 * 60 * 1000);
+    const fresh = write('fresh.json', 60 * 1000);
+    write('notes.txt', 60 * 60 * 1000);
+    assert.deepEqual(G.sweepPending(root), [stale]);
+    assert.deepEqual(fs.readdirSync(dir).sort(), ['fresh.json', 'notes.txt'], 'only stale hand-offs go');
+    // The cutoff is a parameter, so nothing has to wait ten minutes.
+    assert.deepEqual(G.sweepPending(root, { maxAgeMs: 0 }), [fresh]);
+  });
+
+  test('no folder means nothing to sweep, and none is created', (t) => {
+    const root = tempRoot(t);
+    assert.deepEqual(G.sweepPending(root), []);
+    assert.equal(fs.existsSync(G.pendingDir(root)), false);
+  });
+});
+
+describe('missingCwdMessage', () => {
+  test('names the directory, and the transcript folder when it has one', () => {
+    const file = path.join('cfg', 'projects', 'd--gone-proj', 's.jsonl');
+    const msg = G.missingCwdMessage('/gone/proj', file);
+    assert.match(msg, /^\/gone\/proj no longer exists — claude --resume looks a session up/);
+    assert.ok(msg.includes(`\n  ${path.dirname(file)}\n`), 'the folder to move, on a line of its own');
+    assert.doesNotMatch(G.missingCwdMessage('/gone/proj', null), /moved/);
+  });
 });
 
 describe('sessionMeta', () => {
