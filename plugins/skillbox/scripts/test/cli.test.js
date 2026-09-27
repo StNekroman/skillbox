@@ -361,6 +361,27 @@ describe('fork-tree.js', () => {
     same(call.cwd, project);
   });
 
+  test('--open on the session you are in launches nothing and says so', (t) => {
+    const { root } = tree(t);
+    const log = path.join(root, 'calls.jsonl');
+    const env = { CLAUDE_CONFIG_DIR: root, CLAUDE_CODE_SESSION_ID: CHILD, CLAUDE_CODE_EXECPATH: fakeClaude(root), FAKE_CLAUDE_LOG: log, FORK_AT_TERMINAL: '{cmd}' };
+    const res = run('fork-tree.js', ['--open 2'], env);
+    assert.equal(res.status, 0, res.stderr);
+    assert.deepEqual(lines(res.stdout), [`you're already here (${CHILD.slice(0, 8)})`]);
+    assert.equal(fs.existsSync(log), false, 'nothing launched');
+  });
+
+  test('focused on another session, the marker still shows where you actually are', (t) => {
+    const { root } = tree(t);
+    const res = run('fork-tree.js', ['--static aaaa0000'], { CLAUDE_CONFIG_DIR: root, CLAUDE_CODE_SESSION_ID: CHILD });
+    assert.equal(res.status, 0, res.stderr);
+    const out = lines(res.stdout);
+    assert.equal(out.length, 2);
+    assert.match(out[0], /^\s+1\s+● aaaa0000\s+Parent session/);
+    assert.doesNotMatch(out[0], /you are here/);
+    assert.match(out[1], /^\s+2\s+└─ bbbb0000\s+Child session.*\(you are here\)$/);
+  });
+
   test('an out-of-range --open exits 1 without launching anything', (t) => {
     const { root } = tree(t);
     const res = run('fork-tree.js', ['--open 9'], { CLAUDE_CONFIG_DIR: root, CLAUDE_CODE_SESSION_ID: CHILD });

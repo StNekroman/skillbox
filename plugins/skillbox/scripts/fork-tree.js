@@ -138,6 +138,7 @@ function decorate(rows, root, cache, edges, focus, live, focusCwd) {
     return {
       ...r,
       isFocus: r.id === focus,
+      isHere: r.id === here(),
       short: r.id.slice(0, 8),
       title: G.preview(meta.title, 52) || '(untitled)',
       turns: meta.turns ? `[${meta.turns} turn${meta.turns === 1 ? '' : 's'}]` : '',
@@ -185,12 +186,16 @@ function renderLine(r, index, selected) {
     r.age.padEnd(W.age),
   ].join('');
   const tags = r.tags.map((t) => (t === 'live' ? c.green(t) : c.dim(t))).join(' ');
-  const tail = `${tags ? `  ${tags}` : ''}${r.isFocus ? c.cyan('  (you are here)') : ''}`;
+  const tail = `${tags ? `  ${tags}` : ''}${r.isHere ? c.cyan('  (you are here)') : ''}`;
   // trimEnd only strips the column padding; ANSI resets are not whitespace.
   return `${r.isFocus || selected ? c.bold(line) : line}${tail}`.trimEnd();
 }
 
 // ---------------------------------------------------------------- focus
+
+// The session this command runs in. Set by Claude Code for its child
+// processes; absent from a plain shell.
+const here = () => process.env.CLAUDE_CODE_SESSION_ID || null;
 
 function resolveFocus(root, cache, arg) {
   const all = G.listTranscripts(root);
@@ -216,7 +221,7 @@ function resolveFocus(root, cache, arg) {
   // meaning — guessing the most recent session for this directory just centres
   // the view on something you did not ask about. Return null and let the caller
   // show the whole forest, which is what you can actually navigate.
-  return process.env.CLAUDE_CODE_SESSION_ID || null;
+  return here();
 }
 
 // Every root and all its descendants. Used when there is no focus session.
@@ -248,6 +253,13 @@ function buildForest(edges, kids) {
 // So a session whose directory is gone is refused here, with the directory
 // named, rather than opened into a window that can only say "not found".
 function openSession(id, inPlace, cwd, file) {
+  // Resuming the session this command runs in would only open a second copy
+  // of it. Say so and stop — before the directory check, since nothing is
+  // being opened either way.
+  if (id === here()) {
+    console.log(`you're already here (${id.slice(0, 8)})`);
+    return;
+  }
   if (cwd && !fs.existsSync(cwd)) fail(G.missingCwdMessage(cwd, file));
   const exe = G.claudeExe();
   const dir = cwd || undefined;
@@ -310,6 +322,9 @@ function interactive(rows, startIdx) {
         console.error(`Error: ${e.message}`);
         process.exit(1);
       }
+      // An in-place open replaces this process; reaching here means nothing
+      // was launched, and the picker is finished either way.
+      process.exit(0);
     };
     if (key.name === 'up' || key.name === 'k') {
       pos = (pos - 1 + pickable.length) % pickable.length;
