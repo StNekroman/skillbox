@@ -3,14 +3,15 @@
 The core plugin's skills read one file: `.skillbox/tickets.json`, under the root of the repository
 being worked in. It is committed, so a team shares one answer.
 
-The file is named for the ticket skills, and `to-adr` reads it too. Where ADRs live is one more of
-the repository's document paths, and `jira-push-ticket` has to know it to rewrite links inside
-them, so one file answers every path question.
+The file is named for the ticket skills, and `to-adr` and `to-sdd` read it too. Where ADRs and
+SDDs live are more of the repository's document paths, and `jira-push-ticket` has to know them to
+rewrite links inside them, so one file answers every path question. The plugin's Stop hook reads it
+as well, and does nothing in a repository whose file names no `paths.sddRoot`.
 
 `.skillbox/` is the plugin family's own directory in a consuming repository. Everything this
 plugin or its siblings need lives there rather than scattered across the repository root.
 
-This plugin owns the `paths` and `domainNotes` keys. The `jira` block belongs to the
+This plugin owns the `paths`, `sdd` and `domainNotes` keys. The `jira` block belongs to the
 `skillbox-jira` plugin, whose own `CONFIG.md` documents it and the init that fills it. It may be
 absent in a repository that drafts tickets and never pushes them; `draft-ticket` and `to-adr` use
 only `jira.site` from it, to cite an issue by URL.
@@ -27,20 +28,26 @@ only `jira.site` from it, to cite an issue by URL.
     "draftRoot": "devdoc/proposed-tickets",
     "adrRoot": "devdoc/architecture-decisions",
     "adrTemplate": "devdoc/architecture-decisions/template.md",
-    "docRoots": ["devdoc/architecture-decisions", "devdoc/specs", "devdoc/tech"]
+    "sddRoot": "devdoc/sdd",
+    "docRoots": ["devdoc/architecture-decisions", "devdoc/sdd", "devdoc/specs", "devdoc/tech"]
+  },
+  "sdd": {
+    "maxLines": 500
   },
   "domainNotes": ".github/copilot-instructions.md"
 }
 ```
 
-| Key                 | Meaning                                                                                                                                                |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `paths.draftRoot`   | Where drafts live, relative to the repository root. Read by `draft-ticket` and `jira-push-ticket`                                                      |
-| `paths.adrRoot`     | Where architecture decision records live, relative to the repository root. Read by `to-adr`                                                            |
-| `paths.adrTemplate` | Optional. A markdown file in the repository whose skeleton `to-adr` copies instead of its built-in template. Omit the key to use the built-in          |
-| `paths.docRoots`    | Directories searched for inbound references to a draft. ADRs, specs, tech docs — whatever this repository has. Includes `adrRoot` whenever that is set |
-| `domainNotes`       | Optional. A repository document holding domain gotchas a drafter must read before writing about them. Omit the key when there is none                  |
-| `jira.site`         | Optional here. Site URL, used to write `<site>/browse/<KEY>` links. The rest of the `jira` block is documented by `skillbox-jira`                      |
+| Key                 | Meaning                                                                                                                                                               |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `paths.draftRoot`   | Where drafts live, relative to the repository root. Read by `draft-ticket` and `jira-push-ticket`                                                                     |
+| `paths.adrRoot`     | Where architecture decision records live, relative to the repository root. Read by `to-adr`                                                                           |
+| `paths.adrTemplate` | Optional. A markdown file in the repository whose skeleton `to-adr` copies instead of its built-in template. Omit the key to use the built-in                         |
+| `paths.sddRoot`     | Where SDD folders live, relative to the repository root. Read by `to-sdd`, `scripts/sdd-check.js` and the Stop hook                                                   |
+| `paths.docRoots`    | Directories searched for inbound references to a draft. ADRs, specs, tech docs — whatever this repository has. Includes `adrRoot` and `sddRoot` whenever they are set |
+| `sdd.maxLines`      | The most lines one SDD file may hold before `sdd-check.js fix` moves its subsections into files of their own. No default: the init writes it                          |
+| `domainNotes`       | Optional. A repository document holding domain gotchas a drafter must read before writing about them. Omit the key when there is none                                 |
+| `jira.site`         | Optional here. Site URL, used to write `<site>/browse/<KEY>` links. The rest of the `jira` block is documented by `skillbox-jira`                                     |
 
 ## When the file or a key is missing
 
@@ -78,6 +85,22 @@ directories you found on the way. An ADR that cites a draft is an inbound refere
 For `adrTemplate`, look inside `adrRoot` for a template file: `template.md`, `TEMPLATE.md`,
 `adr-template.md`, `0000-template.md`. Propose it when there is one. When there is none, leave the
 key out without asking, and mention in the one-line report that the key exists.
+
+### `paths.sddRoot` and `sdd.maxLines`
+
+Filled by `to-sdd`. Look for a directory that already holds SDDs: folders named like
+`SDD001-email-notifications/`, files named like `SDD001-email-notifications.md`, or a directory
+named `sdd` or `sdds` — an entry in `docRoots` included. One such directory has answered `sddRoot`
+itself. None, or several, means ask where SDDs should go, proposing `sdd` beside the repository's
+other docs.
+
+Then add `sddRoot` to `docRoots`, creating the list if there is none, for the same reason as
+`adrRoot`: an SDD that cites a draft is an inbound reference `jira-push-ticket` must rewrite.
+
+Write `sdd.maxLines` as `500` without asking, and say in the one-line report that it is there to
+tune. Never leave it out: `sdd-check.js` has no default, so that the limit in force is always the
+one written in the file. A lower value later splits the files over it; a higher one merges nothing
+back, since no path may move.
 
 ### `jira.site`
 

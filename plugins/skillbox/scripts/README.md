@@ -1,13 +1,16 @@
 # scripts
 
-The implementation behind `/skillbox:fork-at` and `/skillbox:fork-tree`. The command
-files in `../commands/` are thin wrappers that invoke these through `${CLAUDE_PLUGIN_ROOT}`.
+The implementation behind `/skillbox:fork-at` and `/skillbox:fork-tree`, and the SDD checker
+behind the `to-sdd` skill and the Stop hook. The command files in `../commands/`, the skill and
+`../hooks/hooks.json` invoke these through `${CLAUDE_PLUGIN_ROOT}`.
 
 | File | What |
 |---|---|
 | `fork-at.js` | Resolves a cut point and opens a window at once; in that window, creates the child with one headless turn and resumes it |
 | `fork-tree.js` | Renders the fork tree; interactive picker when run from a TTY |
 | `lib/fork-graph.js` | Shared: transcript reading, edge collection, session metadata, terminal launching |
+| `sdd-check.js` | SDD checks and repairs — `check`, `fix`, `migrate`, `refs`, `next` — and the Stop hook, `hook`. Disk and git work only |
+| `lib/sdd-doc.js` | The SDD model, pure: parsing a doc, the rules, the mechanical repairs, finding references |
 | `test/` | Unit and end-to-end tests, run with Node's built-in runner |
 
 Run them directly for things a slash command cannot do — `fork-tree.js` from a real terminal gets
@@ -51,7 +54,7 @@ No dependencies — Node's built-in runner. From the repository root:
 node --test 'plugins/skillbox/scripts/test/*.test.js'
 ```
 
-Every test builds synthetic transcripts in a throwaway `CLAUDE_CONFIG_DIR`, so none reads your real
+Every fork test builds synthetic transcripts in a throwaway `CLAUDE_CONFIG_DIR`, so none reads your real
 sessions. `cli.test.js` runs the scripts as the slash commands do, end to end, against
 `test/fixtures/fake-claude.js` — a stand-in binary that records its arguments, stdin, working
 directory and config directory. `FORK_AT_TERMINAL='{cmd}'` runs the window's command as a hidden
@@ -59,6 +62,35 @@ background process, so no window opens and no model is called.
 
 The scripts are importable for this reason: `main()` runs only under `require.main === module`, and a
 failure throws `CliError` instead of exiting, which `runMain` turns into the printed error.
+
+`sdd-doc.test.js` covers the SDD model directly, including 25 generated docs run through `fix` at
+five limits each: every line of text must survive in order, nothing `fix` could still repair may
+remain, and a second run must change nothing. `sdd-check.test.js` runs `sdd-check.js` end to end in
+throwaway git repositories — as the skill runs it, and as the Stop hook does, with hook input on
+stdin. Tests that need git are skipped where it is not installed.
+
+## The SDD checker
+
+`sdd-check.js` finds the repository by walking up to `.skillbox/tickets.json`, and reads
+`paths.sddRoot` and `sdd.maxLines` from it. The split rule, the formats and the reasons behind them
+are in the [to-sdd README](../skills/to-sdd/README.md); two things matter here.
+
+**`fix` refuses rather than guesses.** A doc with a structural problem — an anchor defined twice, a
+section with no parent, an unnumbered heading at section level — is left untouched, because moving
+text around it could misplace some. Everything else it repairs is mechanical and idempotent.
+
+**The reference scan reads only what can cite.** With git, `check`, `fix` and `migrate` read the
+files `git grep` finds `SDD` in — tracked or untracked, ignored ones excluded — plus the SDD files
+themselves, so the work grows with the citations, not the repository. Without git, they walk every
+file below the root, minus dot-directories and `node_modules`.
+
+**The hook is cheap by construction.** It exits at once without a config or a `paths.sddRoot`, then
+asks git which files changed since `HEAD` and checks only the SDD folders among them, and the
+references inside those. It still parses every SDD under `paths.sddRoot` — numbering and references
+are validated against all of them — but reads no file outside it: the repository-wide reference
+scan is `check`'s job, run by the skill, not something to pay for at the end of every turn. It
+exits 2 — which sends its stderr to the agent — only on an error, and 0 whenever
+`stop_hook_active` says the turn was already sent back once.
 
 ## Environment
 
@@ -95,7 +127,11 @@ A Claude Code upgrade is the likeliest thing to break this.
 
 ## What they write
 
-In the config directory, all additive and safe to delete:
+`sdd-check.js` writes only inside the repository it runs in, and only for `fix` and `migrate`
+without `--dry-run`: SDD files, and — for `migrate` — the files whose links and references it
+rewrites. It never stages or commits. The hook writes nothing.
+
+The fork scripts write in the config directory, all additive and safe to delete:
 
 - `fork-tree.jsonl` — one line per fork: parent, child, cut point.
 - `fork-tree-cache.json` — size/mtime cache so the tree does not reparse every transcript. Entries

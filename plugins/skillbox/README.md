@@ -2,18 +2,21 @@
 
 The core of the family: everything here needs nothing beyond Node. Fork a Claude Code conversation
 into a new session truncated at a chosen point and navigate the resulting tree; write settled
-research into ticket draft files, and settled architecture decisions into ADRs.
+research into ticket draft files, settled architecture decisions into ADRs, and keep the
+repository's SDDs true as the code changes.
 
 ## Components
 
-| Component                                       | Kind      | What                                                                                        |
-| ----------------------------------------------- | --------- | ------------------------------------------------------------------------------------------- |
-| `/skillbox:fork-at`                             | command   | Fork the conversation at a chosen turn                                                      |
-| `/skillbox:fork-tree`                           | command   | Show where this session sits among its forks                                                |
-| [`draft-ticket`](skills/draft-ticket/README.md) | skill     | Writes one markdown file per deliverable, in a fixed ticket structure, every claim verified |
-| [`to-adr`](skills/to-adr/README.md)             | skill     | Records a settled architecture decision as an ADR — and writes nothing when there is none   |
-| [`CONFIG.md`](CONFIG.md)                        | reference | The per-repository config contract and its init flow                                        |
-| [`scripts/`](scripts/README.md)                 | node      | The fork implementation, plus env vars and internals                                        |
+| Component                                       | Kind      | What                                                                                            |
+| ----------------------------------------------- | --------- | ----------------------------------------------------------------------------------------------- |
+| `/skillbox:fork-at`                             | command   | Fork the conversation at a chosen turn                                                          |
+| `/skillbox:fork-tree`                           | command   | Show where this session sits among its forks                                                    |
+| [`draft-ticket`](skills/draft-ticket/README.md) | skill     | Writes one markdown file per deliverable, in a fixed ticket structure, every claim verified     |
+| [`to-adr`](skills/to-adr/README.md)             | skill     | Records a settled architecture decision as an ADR — and writes nothing when there is none       |
+| [`to-sdd`](skills/to-sdd/README.md)             | skill     | After a code change, corrects or extends the SDDs it touched — and writes nothing below the bar |
+| `hooks/hooks.json`                              | hook      | Stop hook: checks the SDDs changed in a turn before the turn ends                               |
+| [`CONFIG.md`](CONFIG.md)                        | reference | The per-repository config contract and its init flow                                            |
+| [`scripts/`](scripts/README.md)                 | node      | The fork implementation and the SDD checker, plus env vars and internals                        |
 
 Commands are documented here rather than beside their files: every `.md` in `commands/` registers
 as a command, so a README in there would appear as a stray `/readme`.
@@ -103,9 +106,27 @@ go. `paths.adrTemplate` points it at the repository's own ADR template instead o
 [The skill's README](skills/to-adr/README.md) has the bar a decision must clear and what it never
 invents.
 
+## to-sdd
+
+An SDD is agent-written memory of one feature area, committed to the repository: what the area
+does, how its parts fit, the rules other code follows. The next agent reads it before changing that
+area. At the end of a task that changed code, the skill corrects what the change made wrong and
+records the architecture it added — and writes nothing for a bug fix, a refactor or a field.
+
+Each SDD is a folder, `SDDnnn-<slug>/`, whose `README.md` holds the abstract and a generated index.
+When a file passes `sdd.maxLines`, its subsections move into files named for their anchors, so the
+agent always reads whole files instead of grepping a long one. References are ids, `SDD001§3.2`,
+never paths, so nothing breaks when a file splits.
+
+The plugin's Stop hook checks the SDDs changed in a turn before the turn ends, and sends problems
+back to the agent. It does nothing in a repository whose config names no `paths.sddRoot`, and on
+first use the skill proposes the `CLAUDE.md` lines that make sessions read and update SDDs at all.
+[The skill's README](skills/to-sdd/README.md) has the format, the bar and the script.
+
 ## Requirements
 
-Node. Developed against v22; anything with `crypto.randomUUID` will do.
+Node. Developed against v22; anything with `crypto.randomUUID` will do. The SDD hook and
+`sdd-check.js refs --changed` also need git.
 
 The fork commands drive Claude Code's own session store and CLI, including two undocumented flags.
 See [scripts/README.md](scripts/README.md#version-coupling) for what an upgrade might break.
