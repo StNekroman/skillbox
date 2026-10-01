@@ -1,7 +1,7 @@
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
 
-const D = require('../lib/sdd-doc');
+const D = require('../../skills/to-sdd/scripts/lib/sdd-doc');
 const { body, section, readme, prng } = require('./sdd-helpers');
 
 const { README } = D;

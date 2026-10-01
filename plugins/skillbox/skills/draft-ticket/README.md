@@ -9,8 +9,8 @@ what the skill does, when it fires, and what it needs.
 ## What it produces
 
 One markdown file per deliverable, under `paths.draftRoot` from
-[the plugin config](../../CONFIG.md), named `<type>-<slug>.md` — or `<KEY>.md` once the ticket has
-a tracker id.
+[the repository config](references/config.md), named `<type>-<slug>.md` — or `<KEY>.md` once the
+ticket has a tracker id.
 
 The structure is fixed and mostly optional: only the title, the field list, `Risk if not
 implemented` and `Implementation risk` are mandatory. Every other section appears when the research
@@ -46,3 +46,4 @@ from chat without rechecking. Research notes drift; the file is what a developer
 |---|---|
 | `SKILL.md` | the instructions |
 | `references/ticket-template.md` | the skeleton to copy, with every section and its placeholder |
+| `references/config.md` | the keys of `.skillbox/tickets.json` this skill reads, and the init that fills them |

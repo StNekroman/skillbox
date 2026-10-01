@@ -29,7 +29,7 @@ it. They fail silently — the link still renders, and a reader only finds out b
 
 | | |
 |---|---|
-| Config | `jira.site`, `jira.projects`, `jira.severityToPriority`, `paths.draftRoot`, `paths.docRoots` — see [CONFIG.md](../../CONFIG.md) |
+| Config | `jira.site`, `jira.projects`, `jira.severityToPriority`, `paths.draftRoot`, `paths.docRoots` — see [references/config.md](references/config.md) |
 | Atlassian MCP | **Required.** Shipped with the plugin; see the [plugin README](../../README.md) |
 | Git | The rename is `git mv`, and the final check is `git status` |
 | Drafts | Written by `draft-ticket` in the `skillbox` core plugin, which this plugin depends on |
@@ -60,3 +60,4 @@ three that need care, and what Jira refuses outright.
 |---|---|
 | `SKILL.md` | the instructions |
 | `references/html-mapping.md` | markdown to Jira HTML, construct by construct |
+| `references/config.md` | the keys of `.skillbox/tickets.json` this skill reads, and the init that fills them |

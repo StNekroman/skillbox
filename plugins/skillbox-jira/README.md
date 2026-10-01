@@ -9,7 +9,6 @@ this one depends on and pulls in when installed.
 | Component                                               | Kind      | What                                                                                                                                                                                    |
 | ------------------------------------------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [`jira-push-ticket`](skills/jira-push-ticket/README.md) | skill     | Creates a Jira issue from a draft, turns its relationship sections into real Jira links, rewrites every inbound reference across the repository, and renames the draft to its issue key |
-| [`CONFIG.md`](CONFIG.md)                                | reference | The `jira` block of the per-repository ticket config, and the init that fills it                                                                                                        |
 | `.mcp.json`                                             | MCP       | The Atlassian server the skill reaches Jira through                                                                                                                                     |
 
 `jira-push-ticket` never writes a draft; `draft-ticket` in the core never touches a tracker. They
@@ -24,8 +23,8 @@ can from Jira, asks about what is genuinely a choice, and writes it — then car
 you asked for. The file is shared with the core plugin's ticket skill; commit it so your team
 shares one answer.
 
-[The configuration reference](CONFIG.md) has the block's schema and the init flow. The short
-version:
+[The skill's configuration reference](skills/jira-push-ticket/references/config.md) has the
+block's schema and the init flow. The short version:
 
 ```json
 {

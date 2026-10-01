@@ -7,12 +7,12 @@ const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
 
-const D = require('../lib/sdd-doc');
-const { loadConfig, loadDocs, citingFiles } = require('../sdd-check');
+const D = require('../../skills/to-sdd/scripts/lib/sdd-doc');
+const { loadConfig, loadDocs, citingFiles } = require('../../skills/to-sdd/scripts/sdd-check');
 const { tempRoot } = require('./helpers');
 const { body, section, readme, text } = require('./sdd-helpers');
 
-const SCRIPT = path.join(__dirname, '..', 'sdd-check.js');
+const SCRIPT = path.join(__dirname, '..', '..', 'skills', 'to-sdd', 'scripts', 'sdd-check.js');
 const HAS_GIT = spawnSync('git', ['--version']).status === 0;
 const needsGit = { skip: !HAS_GIT && 'git is not installed' };
 const CONFIG = { version: 1, paths: { sddRoot: 'docs/sdd' }, sdd: { maxLines: 40 } };

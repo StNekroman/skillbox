@@ -1,17 +1,22 @@
 # scripts
 
-The implementation behind `/skillbox:fork-at` and `/skillbox:fork-tree`, and the SDD checker
-behind the `to-sdd` skill and the Stop hook. The command files in `../commands/`, the skill and
-`../hooks/hooks.json` invoke these through `${CLAUDE_PLUGIN_ROOT}`.
+The implementation behind `/skillbox:fork-at` and `/skillbox:fork-tree`, and the tests for every
+script in the plugin. The command files in `../commands/` invoke the fork scripts through
+`${CLAUDE_PLUGIN_ROOT}`.
+
+The SDD checker behind the `to-sdd` skill and the Stop hook lives in the skill, in
+`../skills/to-sdd/scripts/`, so that the skill folder works when it is installed on its own. It
+requires nothing from here. The skill runs it through `${CLAUDE_SKILL_DIR}`, and
+`../hooks/hooks.json` through `${CLAUDE_PLUGIN_ROOT}`. It is documented here with the rest.
 
 | File | What |
 |---|---|
 | `fork-at.js` | Resolves a cut point and opens a window at once; in that window, creates the child with one headless turn and resumes it |
 | `fork-tree.js` | Renders the fork tree; interactive picker when run from a TTY |
 | `lib/fork-graph.js` | Shared: transcript reading, edge collection, session metadata, terminal launching |
-| `sdd-check.js` | SDD checks and repairs — `check`, `fix`, `migrate`, `refs`, `next` — and the Stop hook, `hook`. Disk and git work only |
-| `lib/sdd-doc.js` | The SDD model, pure: parsing a doc, the rules, the mechanical repairs, finding references |
-| `test/` | Unit and end-to-end tests, run with Node's built-in runner |
+| `../skills/to-sdd/scripts/sdd-check.js` | SDD checks and repairs — `check`, `fix`, `migrate`, `refs`, `next` — and the Stop hook, `hook`. Disk and git work only |
+| `../skills/to-sdd/scripts/lib/sdd-doc.js` | The SDD model, pure: parsing a doc, the rules, the mechanical repairs, finding references |
+| `test/` | Unit and end-to-end tests for all of the above, run with Node's built-in runner |
 
 Run them directly for things a slash command cannot do — `fork-tree.js` from a real terminal gets
 arrow-key navigation and switches session in place, which needs a TTY:

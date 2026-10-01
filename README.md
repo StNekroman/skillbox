@@ -32,9 +32,11 @@ Drilling in:
 **Documentation convention.** A `SKILL.md` or a command's `.md` is written for the model — imperative
 instructions. A `README.md` beside it is written for a human reading the repository: what the thing
 does, when it fires, what it needs. One exception: nothing but real commands may live in
-`commands/`, because every `.md` there registers as a command. A `SKILL.md` or `CONFIG.md` never
-links across plugins — an installed plugin cannot reach a sibling's directory — while a `README.md`
-may, because it is read here in the repository.
+`commands/`, because every `.md` there registers as a command. A `SKILL.md` never links outside its
+own skill folder: what it needs lives beside it, references in `references/` and scripts in
+`scripts/`. A skill can be installed on its own — by another agent, or by hand — and a link out of
+its folder would then point at nothing. A `README.md` may link anywhere, because it is read here in
+the repository.
 
 ## Install
 
@@ -61,6 +63,14 @@ To iterate on a plugin without installing it, load it for a single session:
 ```bash
 claude --plugin-dir /path/to/your/clone/plugins/skillbox
 ```
+
+### Other agents
+
+The four skills are plain `SKILL.md` folders and carry everything they need, so an agent that reads
+that format can use one copied into its skills directory. The commands and the Stop hook are
+Claude Code only: the fork commands drive Claude Code's own sessions, and the hook is a Claude Code
+plugin hook. Elsewhere `to-sdd` still runs its checks itself; only the end-of-turn check is
+missing. `jira-push-ticket` needs the Atlassian MCP server added to that agent by hand.
 
 ## Requirements
 

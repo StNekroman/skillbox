@@ -2,7 +2,7 @@
 name: to-sdd
 description: Keep the repository’s SDDs — the agent-written memory of how each feature area works — true after a code change. Corrects the sections a change made wrong, adds sections for new architecture, creates an SDD for an area none covers, and keeps each file under the size limit. Writes nothing when the change is below the bar. Use at the end of a task that changed code, or when asked to create, update or migrate SDDs; do not use for ADRs, tickets or code comments.
 metadata:
-  prompt-version: "2026-09-28.1"
+  prompt-version: "2026-10-01.1"
 ---
 
 # Keep the SDDs true
@@ -52,7 +52,7 @@ When two SDDs could hold it, choose the one whose abstract names the area, and n
 
 Read `.skillbox/tickets.json` under the repository root. It supplies `paths.sddRoot` and `sdd.maxLines`.
 
-If the file is missing, or has neither key, run the init in [the configuration reference](../../CONFIG.md), then carry on. The init writes both keys. The script has no default limit, so the value in force is always the one in the file.
+If the file is missing, or has neither key, run the init in [the configuration reference](references/config.md), then carry on. The init writes both keys. The script has no default limit, so the value in force is always the one in the file.
 
 A directory the user names in the request wins for this run. When the init is running anyway, that directory is also the answer to its question.
 
@@ -62,14 +62,24 @@ The init leaves two more things to settle. Handle them only in the run where the
 
 ### The agent instructions
 
-An agent reads the SDDs before changing code only when the repository's always-loaded instructions tell it to. Look at `CLAUDE.md` at the repository root.
+An agent reads the SDDs before changing code only when the repository's always-loaded instructions tell it to. Two files at the repository root carry those: `CLAUDE.md`, which Claude Code reads, and `AGENTS.md`, which most other coding agents read. Claude Code reads `AGENTS.md` too, but only while there is no `CLAUDE.md`. Here `CLAUDE.md` means `CLAUDE.md` or `.claude/CLAUDE.md`.
 
-- **It has no SDD rules.** Propose adding the block in [the CLAUDE.md block](references/claude-md-block.md), with `<sddRoot>` filled in.
-- **There is no `CLAUDE.md`.** Propose creating one that holds only that block.
-- **It delegates** to another file, such as `@AGENTS.md`. Propose the block there instead.
+Look for both, then pick where the block goes:
+
+| The repository has | The block goes in |
+|---|---|
+| A `CLAUDE.md` that imports `@AGENTS.md`, or is a symlink to it | `AGENTS.md`. Every agent reads it from there |
+| Only `AGENTS.md` | `AGENTS.md` |
+| Only `CLAUDE.md` | `CLAUDE.md` |
+| Both, and `CLAUDE.md` does not import `AGENTS.md` | Both. Claude Code reads only `CLAUDE.md` here, and other agents only `AGENTS.md` |
+| Neither | A new `AGENTS.md` holding only the block. Claude Code reads it while there is no `CLAUDE.md`, and so do most other agents |
+
+Then, for each file the block goes in:
+
+- **It has no SDD rules.** Propose adding [the instructions block](references/instructions-block.md), with `<sddRoot>` filled in.
 - **It already has SDD rules** in an older form. Propose replacing them, and show both the lines that go and the lines that come.
 
-Write only after the user confirms. That file shapes every future session in the repository.
+Write only after the user confirms. These files shape every future session in the repository.
 
 ### SDDs in the old format
 
@@ -154,11 +164,13 @@ After the abstract, the README may hold a few short lines, such as a note on how
 
 ## The script
 
-Run it from the repository root. The Stop hook runs it too.
+It is `scripts/sdd-check.js` in this skill's folder. Run it from the repository root. The Stop hook runs it too.
 
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/sdd-check.js" <command>
+node "${CLAUDE_SKILL_DIR}/scripts/sdd-check.js" <command>
 ```
+
+`${CLAUDE_SKILL_DIR}` is the folder this `SKILL.md` is in. If it reaches you unexpanded, write that folder's absolute path in its place.
 
 | Command | Use it |
 |---|---|

@@ -48,17 +48,25 @@ docs/sdd/
 
 At the end of a task that changed code. Installing the plugin is not enough to make that happen:
 a skill is picked by matching its description to a request, and "the task is done" is not a
-request. So on first use the skill proposes a short block for the repository's `CLAUDE.md` —
-creating the file if there is none — that tells every session to read the SDD before changing an
-area and to invoke `to-sdd` after. It writes that block only once you confirm.
+request. So on first use the skill proposes a short block for the repository's agent instructions,
+telling every session to read the SDD before changing an area and to invoke `to-sdd` after. It
+writes that block only once you confirm.
+
+Where the block goes depends on what the repository has. Claude Code reads `CLAUDE.md`, and reads
+`AGENTS.md` only while there is no `CLAUDE.md`; most other agents read `AGENTS.md`. So the block
+goes in `AGENTS.md` when that is the only file, or when `CLAUDE.md` imports it; in `CLAUDE.md` when
+that is the only one; in both when both exist side by side; and in a new `AGENTS.md` when there is
+neither.
 
 It does not write ADRs — that is [to-adr](../to-adr/README.md)'s job — but an SDD section links the
 ADR behind a design choice when there is one.
 
 ## The script and the hook
 
-`scripts/sdd-check.js` does everything mechanical, so the model never moves text between files by
-hand:
+`scripts/sdd-check.js`, in this folder, does everything mechanical, so the model never moves text
+between files by hand. It ships inside the skill so that the folder works installed on its own;
+its internals and tests are documented in the plugin's
+[scripts README](../../scripts/README.md#the-sdd-checker).
 
 | Command | What |
 |---|---|
@@ -68,17 +76,18 @@ hand:
 | `next` | The id a new SDD takes, counting every number in git history, deleted ones included |
 | `migrate [--dry-run]` | Single-file SDDs (`SDDnnn-slug.md`) into folders, links to them into ids, short-form references into the full form |
 
-The plugin also ships a **Stop hook** that runs the same rules at the end of every turn, on the SDD
-folders changed since `HEAD` only. It is silent when they pass; when they do not, it sends the
-problems back to the agent — the `fix` command to run, and what to repair by hand — and the turn
-continues. It never rewrites anything itself, and it lets a turn end once it has been sent back
-once. In a repository with no `paths.sddRoot` it does nothing.
+The plugin also ships a **Stop hook**, Claude Code only, that runs the same rules at the end of
+every turn, on the SDD folders changed since `HEAD` only. It is silent when they pass; when they do
+not, it sends the problems back to the agent — the `fix` command to run, and what to repair by
+hand — and the turn continues. It never rewrites anything itself, and it lets a turn end once it
+has been sent back once. In a repository with no `paths.sddRoot` it does nothing. Where the skill
+runs without the plugin, there is no hook: the skill's own `fix` and `check` are the only check.
 
 ## What it needs
 
 | | |
 |---|---|
-| Config | `paths.sddRoot` and `sdd.maxLines` — see [CONFIG.md](../../CONFIG.md). The limit has no default; the init writes 500 |
+| Config | `paths.sddRoot` and `sdd.maxLines` — see [references/config.md](references/config.md). The limit has no default; the init writes 500 |
 | Git | For `refs --changed`, `next` and the hook. `check`, `fix` and `migrate` work without it |
 | Tools | Read, grep, git, and the script. It never runs builds or tests |
 
@@ -87,4 +96,7 @@ once. In a repository with no `paths.sddRoot` it does nothing.
 | File | What |
 |---|---|
 | `SKILL.md` | the instructions |
-| `references/claude-md-block.md` | the block proposed for a repository's `CLAUDE.md` |
+| `references/instructions-block.md` | the block proposed for a repository's `CLAUDE.md` or `AGENTS.md` |
+| `references/config.md` | the keys of `.skillbox/tickets.json` this skill reads, and the init that fills them |
+| `scripts/sdd-check.js` | the checker the skill and the Stop hook run |
+| `scripts/lib/sdd-doc.js` | the SDD model the checker is built on |

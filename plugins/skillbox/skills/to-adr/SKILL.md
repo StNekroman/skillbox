@@ -2,7 +2,7 @@
 name: to-adr
 description: Record the architecture decisions settled in the current conversation as ADR markdown files under the repository’s ADR directory — the decision, the alternatives weighed, why each lost, and the consequences. Writes nothing when the conversation settled nothing architecturally significant. Use when a design discussion has reached a decision worth keeping; do not use for tickets, specs, meeting notes, or minor choices.
 metadata:
-  prompt-version: "2026-09-27.2"
+  prompt-version: "2026-10-01.1"
 ---
 
 # Record an Architecture Decision
@@ -64,7 +64,7 @@ If the user reads that and still asks for a record, write it — it is their rep
 
 Read `.skillbox/tickets.json` under the repository root. It supplies `paths.adrRoot`, the optional `paths.adrTemplate`, and `jira.site` for citing issues.
 
-If the file is missing, or it has no `paths.adrRoot`, run the init in [the configuration reference](../../CONFIG.md), then carry on with the request. If `paths.adrTemplate` is set but the file it names does not exist, stop and ask — never fall back to the built-in template in silence.
+If the file is missing, or it has no `paths.adrRoot`, run the init in [the configuration reference](references/config.md), then carry on with the request. If `paths.adrTemplate` is set but the file it names does not exist, stop and ask — never fall back to the built-in template in silence.
 
 If a record cites a Jira key and the file has no `jira.site`, ask for the site and add it, as the same reference describes.
 

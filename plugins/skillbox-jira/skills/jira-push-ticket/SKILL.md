@@ -2,7 +2,7 @@
 name: jira-push-ticket
 description: Create a Jira issue from a ticket draft file using the official Atlassian MCP server, optionally under a parent epic, then rewrite inbound references across the repository and rename the draft to its issue key. Use when a settled draft in the repository’s ticket-draft directory should become a real Jira issue; do not use to write the draft in the first place, and do not use to review or transition existing issues.
 metadata:
-  prompt-version: "2026-09-27.2"
+  prompt-version: "2026-10-01.1"
 ---
 
 # Push a Ticket Draft to Jira
@@ -36,9 +36,9 @@ across two.
 ## Before the first call
 
 Read `.skillbox/tickets.json` under the repository root. It supplies `jira.site`, `jira.projects`,
-`jira.severityToPriority`, `paths.draftRoot` and `paths.docRoots`. If the file or its `jira` block
-is not there, run the init in [the configuration reference](../../CONFIG.md) and then carry on —
-this skill cannot run without it, and guessing a site is not a recovery.
+`jira.severityToPriority`, `paths.draftRoot` and `paths.docRoots`. If the file, its `jira` block or
+those `paths` keys are not there, run the init in [the configuration reference](references/config.md)
+and then carry on — this skill cannot run without it, and guessing a site is not a recovery.
 
 Pass `jira.site` as `cloudId` on every Atlassian MCP call. The tools accept a site URL wherever they
 accept a site UUID, so no lookup call is needed.

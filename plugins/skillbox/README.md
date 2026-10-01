@@ -15,8 +15,7 @@ repository's SDDs true as the code changes.
 | [`to-adr`](skills/to-adr/README.md)             | skill     | Records a settled architecture decision as an ADR — and writes nothing when there is none       |
 | [`to-sdd`](skills/to-sdd/README.md)             | skill     | After a code change, corrects or extends the SDDs it touched — and writes nothing below the bar |
 | `hooks/hooks.json`                              | hook      | Stop hook: checks the SDDs changed in a turn before the turn ends                               |
-| [`CONFIG.md`](CONFIG.md)                        | reference | The per-repository config contract and its init flow                                            |
-| [`scripts/`](scripts/README.md)                 | node      | The fork implementation and the SDD checker, plus env vars and internals                        |
+| [`scripts/`](scripts/README.md)                 | node      | The fork implementation and the tests of every script, plus env vars and internals              |
 
 Commands are documented here rather than beside their files: every `.md` in `commands/` registers
 as a command, so a README in there would appear as a stray `/readme`.
@@ -89,7 +88,7 @@ repository's `.skillbox/tickets.json`. On first use in a repository the skill di
 asks about what is genuinely a choice, and writes that file — then carries on with the task you
 asked for. Commit the file so your team shares one answer.
 
-[The configuration reference](CONFIG.md) has the schema and the init flow;
+[Configuration](#configuration) maps the file;
 [the skill's README](skills/draft-ticket/README.md) has what it produces and the rule that matters
 most.
 
@@ -120,8 +119,59 @@ never paths, so nothing breaks when a file splits.
 
 The plugin's Stop hook checks the SDDs changed in a turn before the turn ends, and sends problems
 back to the agent. It does nothing in a repository whose config names no `paths.sddRoot`, and on
-first use the skill proposes the `CLAUDE.md` lines that make sessions read and update SDDs at all.
-[The skill's README](skills/to-sdd/README.md) has the format, the bar and the script.
+first use the skill proposes the `CLAUDE.md` or `AGENTS.md` lines that make sessions read and
+update SDDs at all. [The skill's README](skills/to-sdd/README.md) has the format, the bar and the
+script, which ships inside the skill folder.
+
+## Configuration
+
+The skills read one committed file, `.skillbox/tickets.json` at the root of the repository they
+work in, and fill in the keys they need on first use: they discover what they can and ask about the
+rest. Each skill carries the part it reads in its own `references/config.md`, so it works when
+installed on its own. The whole file:
+
+```json
+{
+  "version": 1,
+  "jira": {
+    "site": "https://example.atlassian.net",
+    "projects": ["PROJ", "OPS"],
+    "severityToPriority": {
+      "Critical": "Highest",
+      "High": "High",
+      "Medium": "Medium",
+      "Low": "Low"
+    }
+  },
+  "paths": {
+    "draftRoot": "devdoc/proposed-tickets",
+    "adrRoot": "devdoc/architecture-decisions",
+    "adrTemplate": "devdoc/architecture-decisions/template.md",
+    "sddRoot": "devdoc/sdd",
+    "docRoots": ["devdoc/architecture-decisions", "devdoc/sdd", "devdoc/specs", "devdoc/tech"]
+  },
+  "sdd": {
+    "maxLines": 500
+  },
+  "domainNotes": ".github/copilot-instructions.md"
+}
+```
+
+| Key                                        | Filled by                                             | Read by                                      |
+| ------------------------------------------ | ----------------------------------------------------- | -------------------------------------------- |
+| `paths.draftRoot`                          | `draft-ticket`                                        | `draft-ticket`, `jira-push-ticket`           |
+| `paths.adrRoot`, `paths.adrTemplate`       | `to-adr`                                              | `to-adr`                                     |
+| `paths.sddRoot`, `sdd.maxLines`            | `to-sdd`                                              | `to-sdd`, its script, the Stop hook          |
+| `paths.docRoots`                           | `draft-ticket`; `to-adr` and `to-sdd` add their roots | `jira-push-ticket`                           |
+| `domainNotes`                              | you, by hand                                          | `draft-ticket`                               |
+| `jira.site`                                | whichever skill first cites or pushes an issue        | `draft-ticket`, `to-adr`, `jira-push-ticket` |
+| `jira.projects`, `jira.severityToPriority` | `jira-push-ticket`                                    | `jira-push-ticket`                           |
+
+What each key means, and the init that fills it, is in the skill's own reference:
+[draft-ticket](skills/draft-ticket/references/config.md), [to-adr](skills/to-adr/references/config.md),
+[to-sdd](skills/to-sdd/references/config.md), and
+[jira-push-ticket](../skillbox-jira/skills/jira-push-ticket/references/config.md) in the addon.
+Commit the file. Ignore only `.skillbox/cache/`, the place for anything derived or per-developer.
 
 ## Requirements
 

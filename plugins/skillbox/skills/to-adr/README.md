@@ -9,9 +9,9 @@ what the skill does, when it fires, and what it needs.
 ## What it produces
 
 Usually nothing. When the conversation settled a decision that clears the bar, it writes one
-markdown file per decision under `paths.adrRoot` from [the plugin config](../../CONFIG.md), named
-`ADR-<n>-<slug>.md`. A directory that already names its records another way — `0007-use-cas.md`,
-say — keeps its own pattern.
+markdown file per decision under `paths.adrRoot` from
+[the repository config](references/config.md), named `ADR-<n>-<slug>.md`. A directory that already
+names its records another way — `0007-use-cas.md`, say — keeps its own pattern.
 
 The shape comes from, in order: the repository's own template at `paths.adrTemplate`, the records
 already in the directory, or the built-in [template](references/adr-template.md). The built-in has
@@ -68,3 +68,4 @@ that says what it supersedes, and the old record's status becomes `Superseded` w
 |---|---|
 | `SKILL.md` | the instructions |
 | `references/adr-template.md` | the built-in template, used when the repository sets none; each section documents itself |
+| `references/config.md` | the keys of `.skillbox/tickets.json` this skill reads, and the init that fills them |

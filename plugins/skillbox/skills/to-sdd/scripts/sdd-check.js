@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Checks and repairs the repository's SDD docs, and runs as the plugin's Stop hook.
-// Usage: node <plugin>/scripts/sdd-check.js <command> [SDDnnn ...] [--dry-run]
+// Usage: node <skill>/scripts/sdd-check.js <command> [SDDnnn ...] [--dry-run]
 //   check [SDDnnn ...]          every rule, references from code included; exit 1 on an error
 //   fix [SDDnnn ...]            regenerate indexes and breadcrumbs, set heading levels, move
 //                               sections of files over the limit into their own files; then check
@@ -16,12 +16,25 @@ const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
 
-const { CliError, runMain } = require('./lib/fork-graph');
 const D = require('./lib/sdd-doc');
 
 const CONFIG = path.join('.skillbox', 'tickets.json');
 const CONFIG_NAME = '.skillbox/tickets.json';
 const MAX_TEXT_BYTES = 2 * 1024 * 1024;
+
+// The same two as in the plugin's scripts/lib/fork-graph.js, copied rather than required: the
+// to-sdd skill folder has to work when it is installed on its own.
+class CliError extends Error {}
+
+function runMain(main) {
+  try {
+    main();
+  } catch (e) {
+    if (!(e instanceof CliError)) throw e;
+    console.error(`Error: ${e.message}`);
+    process.exit(1);
+  }
+}
 
 function fail(msg) {
   throw new CliError(msg);
