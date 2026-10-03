@@ -468,6 +468,40 @@ function requireCwd(cwd, transcriptFile) {
 
 // ---------------------------------------------------------------- the fork
 
+// -p tags every row it writes "entrypoint":"sdk-cli", the history copied from
+// the parent included, and Claude Code takes a session tagged that way for a
+// headless SDK run: it leaves it out of the /resume picker and never resolves
+// its name, so the child would answer only to its full id. No flag or
+// variable changes the tag, and only -p honours the cut, so the tag is fixed
+// afterwards — to "cli", what an interactive fork writes. Nothing else writes
+// the file between the -p call exiting and the window resuming it.
+// Only the row's own field changes. The same words inside a message are
+// escaped JSON and never match, and a line that does not parse is kept as is.
+function retagInteractive(file) {
+  let changed = 0;
+  const lines = fs
+    .readFileSync(file, 'utf8')
+    .split('\n')
+    .map((line) => {
+      if (!line.includes('"sdk-cli"')) return line;
+      let row;
+      try { row = JSON.parse(line); } catch { return line; }
+      if (!row || row.entrypoint !== 'sdk-cli') return line;
+      changed++;
+      return JSON.stringify({ ...row, entrypoint: 'cli' });
+    });
+  if (!changed) return 0;
+  const tmp = `${file}.${process.pid}.tmp`;
+  try {
+    fs.writeFileSync(tmp, lines.join('\n'), 'utf8');
+    fs.renameSync(tmp, file);
+  } catch (e) {
+    try { fs.unlinkSync(tmp); } catch { /* never written */ }
+    throw e;
+  }
+  return changed;
+}
+
 // Runs the headless turn that creates the child, then records it. Throws, with
 // nothing recorded, when the child could not be created.
 // The progress lines are for the window, where you watch it happen. Run from
@@ -494,6 +528,15 @@ function createFork(spec, { quiet = false } = {}) {
     fail(`claude exited ${res.status} — no fork created, nothing recorded`);
   }
   if (!quiet) console.log(`done in ${Math.round((Date.now() - started) / 1000)}s`);
+
+  // A fork left tagged still works, so a failure here is only reported.
+  try {
+    const file = findTranscript(spec.root, spec.child);
+    if (!file) throw new Error('no transcript found');
+    retagInteractive(file);
+  } catch (e) {
+    note(`the fork is hidden from /resume's picker and name lookup (${e.message}) — resume it by its full id`);
+  }
 
   const ledger = path.join(spec.root, 'fork-tree.jsonl');
   const entry = {
@@ -649,6 +692,7 @@ module.exports = {
   buildInvocation,
   buildResume,
   buildSpec,
+  retagInteractive,
   pendingFile,
   finishCommand,
   childEnv,

@@ -90,6 +90,14 @@ function forkSession(t) {
   };
 }
 
+// The entrypoint tag on each row of a session's transcript, wherever the fake
+// filed it.
+function entrypoints(root, sessionId) {
+  const projects = path.join(root, 'projects');
+  const dir = fs.readdirSync(projects).find((d) => fs.existsSync(path.join(projects, d, `${sessionId}.jsonl`)));
+  return dir ? readJsonl(path.join(projects, dir, `${sessionId}.jsonl`)).map((r) => r.entrypoint) : null;
+}
+
 const childOf = (stdout) => /^child\s+(\S+)$/m.exec(stdout)[1];
 const lines = (stdout) => stdout.split('\n').filter(Boolean);
 
@@ -136,6 +144,8 @@ describe('fork-at.js — opening the child', () => {
     assert.equal(entry.directive, DIRECTIVE);
     same(entry.cwd, s.project);
     assert.deepEqual(fs.readdirSync(path.join(s.root, 'fork-pending')), [], 'the hand-off is used up');
+    // -p wrote it "sdk-cli", which /resume's picker hides.
+    assert.deepEqual(entrypoints(s.root, child), ['cli', 'cli'], 'the child is retagged before it is resumed');
   });
 
   // The window may start with a fresh environment and in the home directory.
@@ -198,6 +208,16 @@ describe('fork-at.js — opening the child', () => {
     ]);
     assert.equal(calls.length, 1, 'created, not resumed');
     same(calls[0].cwd, s.project);
+    assert.equal(readJsonl(s.ledger).length, 1);
+    assert.deepEqual(entrypoints(s.root, child), ['cli', 'cli']);
+  });
+
+  // The fork still works when the retag cannot happen, so it is reported, not fatal.
+  test('a child transcript that cannot be found is reported, and the fork still recorded', (t) => {
+    const s = forkSession(t);
+    const res = run('fork-at.js', ['--no-open'], { ...s.env, FAKE_CLAUDE_NO_TRANSCRIPT: '1' });
+    assert.equal(res.status, 0, res.stderr);
+    assert.match(res.stdout, /^note {6}the fork is hidden from \/resume's picker and name lookup \(no transcript found\) — resume it by its full id$/m);
     assert.equal(readJsonl(s.ledger).length, 1);
   });
 

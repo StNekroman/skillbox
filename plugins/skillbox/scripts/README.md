@@ -38,8 +38,17 @@ Two stages, so the window opens straight away instead of after a model turn.
 1. **In the parent.** `fork-at.js` resolves the cut, writes a hand-off file to
    `fork-pending/<child>.json`, opens a window running `fork-at.js --finish <that file>`, and exits.
 2. **In the window.** The finishing stage reads and deletes the hand-off, runs the headless
-   `claude -p` turn that creates the child, writes the ledger, then starts `claude --resume <child>`
-   interactively — with the directive, if there is one, as your first message.
+   `claude -p` turn that creates the child, retags the child's transcript, writes the ledger, then
+   starts `claude --resume <child>` interactively — with the directive, if there is one, as your
+   first message.
+
+The retag is needed because only `-p` honours the cut, and `-p` tags every row it writes
+`"entrypoint":"sdk-cli"`, the copied parent history included. Claude Code treats a session tagged
+that way as a headless SDK run: it leaves it out of the `/resume` picker and never resolves its name,
+so the child would answer only to its full id. Neither `CLAUDE_CODE_ENTRYPOINT` nor any flag changes
+the tag in print mode, so `fork-at.js` rewrites each row's own field to `"cli"`, which is what an
+interactive fork writes. Nothing else writes the file between the `-p` call exiting and the resume.
+If the retag fails, the fork still works and a note says to resume it by its full id.
 
 The hand-off carries everything the window needs, because a window cannot be trusted to inherit it:
 Terminal.app, iTerm and gnome-terminal start from a fresh environment in your home directory. So the
@@ -180,6 +189,8 @@ no compatibility promise:
   appears in `claude --help`.
 - **Private transcript fields** — `origin.kind`, `forkedFrom`, the `custom-title`, `ai-title` and
   `last-prompt` row types, and `~/.claude/sessions/*.json` for liveness.
+- **How `/resume` hides headless sessions** — by the `entrypoint` tag on the transcript rows, which
+  is why the child is retagged. Both flags above work only with `-p`; interactive mode ignores them.
 
 A Claude Code upgrade is the likeliest thing to break this.
 
@@ -189,7 +200,9 @@ A Claude Code upgrade is the likeliest thing to break this.
 without `--dry-run`: SDD files — `fix` also deletes the section files it merges back — and, for
 `migrate`, the files whose links and references it rewrites. It never stages or commits. The hook, `check`, `lint`, `refs` and `next` write nothing.
 
-The fork scripts write in the config directory, all additive and safe to delete:
+The fork scripts write in the config directory. Apart from the child's own transcript, whose
+`entrypoint` tags `fork-at.js` rewrites once after creating it, everything is additive and safe to
+delete:
 
 - `fork-tree.jsonl` — one line per fork: parent, child, cut point.
 - `fork-tree-cache.json` — size/mtime cache so the tree does not reparse every transcript. Entries

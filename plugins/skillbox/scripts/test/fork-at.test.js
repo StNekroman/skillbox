@@ -1,9 +1,11 @@
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('fs');
+const path = require('path');
 
 const F = require('../fork-at');
 const { CliError } = require('../lib/fork-graph');
-const { Transcript } = require('./helpers');
+const { Transcript, tempRoot } = require('./helpers');
 
 // Three finished turns and the fork-at invocation that is running right now.
 function session() {
@@ -459,5 +461,39 @@ describe('buildInvocation', () => {
   test('no --resume-drops-turn when the cut spans more than the running turn', () => {
     const inv = F.buildInvocation({ ...base, cut: { ...base.cut, dropsTurnUuid: null }, exe: 'claude', platform: 'linux' });
     assert.ok(!inv.args.includes('--resume-drops-turn'));
+  });
+});
+
+describe('retagInteractive', () => {
+  // As -p writes them: every row "sdk-cli", including the copied history.
+  const rows = [
+    { type: 'user', entrypoint: 'sdk-cli', message: { role: 'user', content: 'why is "entrypoint":"sdk-cli" hidden?' } },
+    { type: 'assistant', entrypoint: 'sdk-cli', message: { role: 'assistant', content: [{ type: 'text', text: 'see "sdk-cli"' }] } },
+    { type: 'user', entrypoint: 'cli', message: { role: 'user', content: 'later, interactive' } },
+  ];
+
+  test('retags each row "cli", in place, and touches nothing else', (t) => {
+    const file = path.join(tempRoot(t), 'child.jsonl');
+    const torn = '{"type":"user","entrypoint":"sdk-cli"';
+    fs.writeFileSync(file, `${rows.map((r) => JSON.stringify(r)).join('\n')}\n${torn}\n`);
+
+    assert.equal(F.retagInteractive(file), 2);
+    const lines = fs.readFileSync(file, 'utf8').split('\n');
+    assert.deepEqual(
+      lines.slice(0, 3).map((l) => JSON.parse(l)),
+      rows.map((r) => ({ ...r, entrypoint: 'cli' })),
+      'only the field changes — the same words in a message stay',
+    );
+    assert.equal(lines[3], torn, 'a line that does not parse is kept as is');
+    assert.equal(lines[4], '', 'the trailing newline survives');
+    assert.deepEqual(fs.readdirSync(path.dirname(file)), ['child.jsonl'], 'no temporary file left');
+  });
+
+  test('a transcript with nothing to retag is not rewritten', (t) => {
+    const file = path.join(tempRoot(t), 'child.jsonl');
+    fs.writeFileSync(file, `${JSON.stringify(rows[2])}\n`);
+    const before = fs.statSync(file).mtimeMs;
+    assert.equal(F.retagInteractive(file), 0);
+    assert.equal(fs.statSync(file).mtimeMs, before);
   });
 });
