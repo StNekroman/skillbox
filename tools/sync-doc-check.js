@@ -15,7 +15,7 @@ const fs = require('fs');
 const path = require('path');
 
 const SOURCE = 'plugins/skillbox/scripts/doc-check';
-const SKILLS = ['plugins/skillbox/skills/to-sdd'];
+const SKILLS = ['plugins/skillbox/skills/to-sdd', 'plugins/skillbox/skills/to-kb'];
 const SHARED_REFS = 'references';
 
 const posix = (p) => p.split(path.sep).join('/');
