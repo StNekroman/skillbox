@@ -52,9 +52,9 @@ function repo(t, files = {}, { config = CONFIG, useGit = HAS_GIT } = {}) {
   return root;
 }
 
-// A folder SDD as fix leaves it, from the text of its README.md.
+// A folder doc as fix leaves it, from the text of its README.md.
 function folderDoc(dir, readmeLines, maxLines = CONFIG.sdd.maxLines) {
-  const id = /^SDD\d+/.exec(path.basename(dir))[0];
+  const id = /^[A-Z]+\d+/.exec(path.basename(dir))[0];
   const res = D.fixDoc(new Map([[D.README, readmeLines]]), { id, maxLines });
   assert.equal(res.blocked, null);
   return Object.fromEntries([...res.files].map(([name, lines]) => [`${dir}/${name}`, lines]));
@@ -510,7 +510,7 @@ describe('refs', needsGit, () => {
   test('with no references in the changed files, it says so', (t) => {
     const root = repo(t, { ...mailDoc(), 'src/a.ts': ['export {};'] });
     write(root, { 'src/a.ts': ['export const a = 1;'] });
-    assert.match(run(root, ['refs', '--changed']).stdout, /^No SDD references in those files\.$/m);
+    assert.match(run(root, ['refs', '--changed']).stdout, /^No SDD or KBDOC references in those files\.$/m);
   });
 });
 
@@ -528,5 +528,192 @@ describe('next', () => {
 
   test('an empty SDD directory starts at SDD001', (t) => {
     assert.equal(run(repo(t, {}, { useGit: false }), ['next']).stdout, 'SDD001\n');
+  });
+});
+
+describe('knowledge-base pages (KBDOC)', () => {
+  const BOTH = { version: 1, paths: { sddRoot: 'docs/sdd', kbRoot: 'docs/kb' }, sdd: { maxLines: 40 }, kb: { maxLines: 40 } };
+  const KB_ONLY = { version: 1, paths: { kbRoot: 'docs/kb' }, kb: { maxLines: 40 } };
+  const feedDoc = (lines = []) =>
+    folderDoc(
+      'docs/kb/KBDOC001-merchant-center',
+      readme('KBDOC001', 'Merchant Center', [...section('1', 'Contacts page rules', ['Listings are suspended without a legal entity.', ...lines]), ...section('2', 'Feed')]),
+    );
+
+  test('both types pass together, with references in every direction', (t) => {
+    const root = repo(
+      t,
+      {
+        ...folderDoc('docs/sdd/SDD001-mail', readme('SDD001', 'Mail', [...section('1', 'Overview', ['The contacts page follows KBDOC001§1.']), ...section('2', 'Delivery')])),
+        ...feedDoc(['Our mail delivery, SDD001§2, sends the feed.']),
+        'src/mail.ts': ['// SDD001§2, KBDOC001§1', 'export {};'],
+      },
+      { config: BOTH },
+    );
+    const r = run(root, ['check']);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /^All SDD docs and KB pages pass\.$/m);
+  });
+
+  test('a KBDOC reference is checked like an SDD one, and SDD001 and KBDOC001 do not clash', (t) => {
+    const root = repo(t, { ...mailDoc(), ...feedDoc(), 'src/a.ts': ['// KBDOC001§9 KBDOC002 KBDOC11§1 KBDOC001 §1'] }, { config: BOTH });
+    const r = run(root, ['check']);
+    assert.equal(r.status, 1);
+    assert.match(r.stdout, /^src\/a\.ts:1: KBDOC001 has no §9$/m);
+    assert.match(r.stdout, /^src\/a\.ts:1: KBDOC002 does not exist$/m);
+    assert.match(r.stdout, /^src\/a\.ts:1: write KBDOC011, not KBDOC11$/m);
+    assert.match(r.stdout, /^src\/a\.ts:1: short form: write KBDOC001§1, not §1 after KBDOC001$/m);
+    assert.doesNotMatch(r.stdout, /numbered/);
+  });
+
+  test('two KB pages with one number are a clash, renumbered with next KBDOC', (t) => {
+    const root = repo(
+      t,
+      {
+        ...folderDoc('docs/kb/KBDOC003-feed', readme('KBDOC003', 'Feed')),
+        ...folderDoc('docs/kb/KBDOC003-fees', readme('KBDOC003', 'Fees')),
+      },
+      { config: KB_ONLY },
+    );
+    const r = run(root, ['check']);
+    assert.equal(r.status, 1);
+    assert.match(r.stdout, /two KB pages are numbered KBDOC003: KBDOC003-feed and KBDOC003-fees; renumber the newer one with `next KBDOC`/);
+  });
+
+  test('a scoped check takes a KBDOC id; a bare number is ambiguous once both types are configured', (t) => {
+    const root = repo(t, { ...mailDoc(), ...feedDoc(), 'src/a.ts': ['// SDD001§9 and KBDOC001§1'] }, { config: BOTH });
+    const kb = run(root, ['check', 'kbdoc001']);
+    assert.equal(kb.status, 0, kb.stdout);
+    const bare = run(root, ['check', '1']);
+    assert.equal(bare.status, 1);
+    assert.match(bare.stderr, /ambiguous: 1; write SDD001 or KBDOC001/);
+  });
+
+  test('with only SDDs configured, a KBDOC reference is not checked, and says so in a warning', (t) => {
+    const root = repo(t, { ...mailDoc(), 'src/a.ts': ['// KBDOC004§2 and KBDOC004§2/§3'] });
+    const r = run(root, ['check']);
+    assert.equal(r.status, 1, r.stdout);
+    assert.match(r.stdout, /^src\/a\.ts:1: warning: KBDOC004 is not checked: \.skillbox\/tickets\.json has no paths\.kbRoot$/m);
+    assert.match(r.stdout, /^src\/a\.ts:1: short form: write KBDOC004§3, not §3 after KBDOC004§2$/m);
+  });
+
+  test('a KB-only repository passes on its own, and needs kb.maxLines', (t) => {
+    const r = run(repo(t, feedDoc(), { config: KB_ONLY }), ['check']);
+    assert.equal(r.status, 0, r.stdout);
+    assert.match(r.stdout, /^All KB pages pass\.$/m);
+    const none = run(repo(t, feedDoc(), { config: { paths: { kbRoot: 'docs/kb' } } }), ['check']);
+    assert.equal(none.status, 1);
+    assert.match(none.stderr, /has no kb\.maxLines; the to-kb skill's init sets it/);
+  });
+
+  test('fix splits a KB page and writes its breadcrumbs; an attachments folder is left alone', (t) => {
+    const big = readme('KBDOC001', 'Merchant Center', [...section('1', 'Rules', body('one', 20)), ...section('2', 'Feed', body('two', 20))]);
+    const root = repo(t, { 'docs/kb/KBDOC001-merchant-center/README.md': big, 'docs/kb/attachments/notes.md': ['Not a page.'] }, { config: BOTH });
+    const r = run(root, ['fix']);
+    assert.equal(r.status, 0, r.stdout);
+    assert.match(r.stdout, /^KBDOC001: moved §1, §2 out of README\.md into their own files; regenerated the index\.$/m);
+    assert.match(read(root, 'docs/kb/KBDOC001-merchant-center/2.md'), /^> \[KBDOC001 — Merchant Center\]\(README\.md\)\n\n## §2 Feed\n/);
+    assert.equal(run(root, ['check']).status, 0);
+  });
+
+  test('lint on a KB page: no history, fences or identifiers; labels and missing paths are still reported', (t) => {
+    const page = folderDoc(
+      'docs/kb/KBDOC001-merchant-center',
+      readme('KBDOC001', 'Merchant Center', [
+        ...section('1', 'Feed rules (§P1)', [
+          'Google used to allow it; `getWarehouses()` and `MerchantFeed.submit()` are theirs, as is `webpack.config.js`.',
+          'Our side is `src/feed/feed.ts`, not `src/gone/feed.ts`.',
+          '```json',
+          '{ "gtin": "x" }',
+          '```',
+        ]),
+      ]),
+    );
+    const root = repo(t, { ...page, 'src/feed/feed.ts': ['export {};'] }, { config: BOTH });
+    const r = run(root, ['lint']);
+    assert.equal(r.status, 0, r.stderr);
+    const warnings = r.stdout
+      .split('\n')
+      .filter((l) => l.startsWith('docs/'))
+      .map((l) => l.replace(/^\S+ warning: /, ''));
+    assert.deepEqual(warnings, ['the title carries a label, "§P1": drop it once no reference cites the label', '`src/gone/feed.ts`: no such file in the repository']);
+  });
+
+  test('next counts each type apart, and needs the prefix once both are configured', (t) => {
+    const root = repo(t, { ...mailDoc(), ...folderDoc('docs/sdd/SDD002-rates', readme('SDD002', 'Rates')), ...feedDoc() }, { config: BOTH, useGit: false });
+    assert.equal(run(root, ['next', 'SDD']).stdout, 'SDD003\n');
+    assert.equal(run(root, ['next', 'kbdoc']).stdout, 'KBDOC002\n');
+    const bare = run(root, ['next']);
+    assert.equal(bare.status, 1);
+    assert.match(bare.stderr, /next needs SDD or KBDOC/);
+  });
+
+  test('both types may share one directory', (t) => {
+    const config = { ...BOTH, paths: { sddRoot: 'docs', kbRoot: 'docs' } };
+    const root = repo(
+      t,
+      {
+        ...folderDoc('docs/SDD001-mail', readme('SDD001', 'Mail', section('1', 'One', ['See KBDOC001§1.']))),
+        ...folderDoc('docs/KBDOC001-merchant-center', readme('KBDOC001', 'Merchant Center', section('1', 'One'))),
+      },
+      { config, useGit: false },
+    );
+    const r = run(root, ['check']);
+    assert.equal(r.status, 0, r.stdout);
+    assert.equal(run(root, ['next', 'KBDOC']).stdout, 'KBDOC002\n');
+  });
+
+  test('migrate expands SDD short forms and leaves KBDOC ones alone', (t) => {
+    const root = repo(t, { 'docs/sdd/SDD001-mail.md': readme('SDD001', 'Mail', section('1', 'One')), ...feedDoc(), 'src/a.ts': ['// SDD001 §1 and KBDOC001 §1'] }, { config: BOTH });
+    run(root, ['migrate']);
+    assert.equal(read(root, 'src/a.ts'), '// SDD001§1 and KBDOC001 §1\n');
+    assert.ok(fs.existsSync(path.join(root, 'docs/sdd/SDD001-mail/README.md')));
+  });
+
+  test('a doc written with the old sdd:index markers passes, and fix leaves it alone until it changes', (t) => {
+    const files = mailDoc();
+    const entry = 'docs/sdd/SDD001-mail/README.md';
+    const old = { [D.INDEX_OPEN]: '<!-- sdd:index — generated by sdd-check from the section headings; do not edit -->', [D.INDEX_CLOSE]: '<!-- /sdd:index -->' };
+    files[entry] = files[entry].map((l) => old[l] || l);
+    const root = repo(t, files);
+    assert.equal(run(root, ['check']).status, 0);
+    const before = read(root, entry);
+    assert.equal(run(root, ['fix']).status, 0);
+    assert.equal(read(root, entry), before);
+
+    fs.writeFileSync(path.join(root, entry), before.replace('## §2 Delivery', '### §2 Delivery'));
+    assert.equal(run(root, ['fix']).status, 0);
+    assert.ok(read(root, entry).includes(D.INDEX_OPEN));
+    assert.doesNotMatch(read(root, entry), /sdd:index/);
+  });
+
+  describe('hook', needsGit, () => {
+    test('a changed KB page that breaks a rule is sent back, naming the KBDOC rules', (t) => {
+      const root = repo(t, feedDoc(), { config: BOTH });
+      fs.appendFileSync(path.join(root, 'docs/kb/KBDOC001-merchant-center/README.md'), text(section('4.1', 'Orphan')));
+      const reason = hook(root);
+      assert.match(reason, /^KB pages changed in this task break the KBDOC rules\. Repair them before you finish\.$/m);
+      assert.match(reason, /node ".+doc-check\.js" fix KBDOC001\n/);
+    });
+
+    test('an SDD and a KB page changed together are named together', (t) => {
+      const root = repo(t, { ...mailDoc(), ...feedDoc() }, { config: BOTH });
+      fs.appendFileSync(path.join(root, 'docs/sdd/SDD001-mail/README.md'), text(section('4.1', 'Orphan')));
+      fs.appendFileSync(path.join(root, 'docs/kb/KBDOC001-merchant-center/README.md'), text(section('4.1', 'Orphan')));
+      const reason = hook(root);
+      assert.match(reason, /^SDD docs and KB pages changed in this task break the SDD and KBDOC rules\./m);
+      assert.match(reason, /fix SDD001 KBDOC001\n/);
+    });
+
+    test('a root of "." holds the docs at the top of the repository', (t) => {
+      const config = { version: 1, paths: { sddRoot: '.' }, sdd: { maxLines: 40 } };
+      const root = repo(t, folderDoc('SDD001-mail', readme('SDD001', 'Mail', section('1', 'One'))), { config });
+      fs.appendFileSync(path.join(root, 'SDD001-mail/README.md'), text(section('4.1', 'Orphan')));
+      assert.match(hook(root), /§4\.1 has no parent/);
+      commit(root, 'orphan');
+      fs.rmSync(path.join(root, 'SDD001-mail'), { recursive: true });
+      commit(root, 'gone');
+      assert.equal(run(root, ['next']).stdout, 'SDD002\n');
+    });
   });
 });

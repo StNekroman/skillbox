@@ -93,6 +93,8 @@ function loadConfig(root) {
 
 const kindOf = (cfg, prefix) => cfg.kinds.find((k) => k.type.prefix === prefix) || null;
 const either = (words) => words.join(' or ');
+// Why a reference to a type is not checked: the config names no root for it.
+const uncheckedWhy = (prefix) => `${CONFIG_NAME} has no paths.${D.typeOf(prefix).rootKey}`;
 
 function requireRoots(cfg) {
   if (cfg.kinds.length) return;
@@ -299,7 +301,7 @@ function numberIssues(docs) {
     issues.push({
       path: same[1].rel,
       level: 'error',
-      message: `two ${same[0].type.plural} are numbered ${id}: ${same.map((d) => d.name).join(' and ')}; renumber the newer one with \`next\``,
+      message: `two ${same[0].type.plural} are numbered ${id}: ${same.map((d) => d.name).join(' and ')}; renumber the newer one with \`next ${same[0].prefix}\``,
       fixable: false,
       id,
     });
@@ -309,7 +311,8 @@ function numberIssues(docs) {
 
 // References in the given files, checked against the docs. A doc's own files are taken from the
 // docs as loaded rather than read again. Each issue remembers which doc it points at and which
-// doc's file it sits in, so a check scoped to some docs can keep only those.
+// doc's file it sits in, so a check scoped to some docs can keep only those. A reference to a
+// type the config names no root for cannot be checked, and says so in a warning.
 function refIssues(cfg, docs, files) {
   const ids = byId(docs);
   const owner = new Map();
@@ -326,8 +329,16 @@ function refIssues(cfg, docs, files) {
       lines = D.splitLines(text).lines;
     }
     for (const ref of D.refsInFile(p, lines, { markdown: /\.mdx?$/i.test(p), inDoc: Boolean(own) })) {
+      const target = D.refId(ref, own && own.doc);
+      const at = { path: p, line: ref.i + 1, fixable: false, target, source: own ? own.doc.id : null };
+      if (ref.kind !== 'bare' && ref.kind !== 'noncanonical' && !kindOf(cfg, ref.prefix)) {
+        // How it is written can still be wrong: a short form, prose, a link by path.
+        const form = !ref.tag && ['short', 'prose', 'link'].includes(ref.kind) ? D.validateRef(ref, ids, null) : null;
+        issues.push(form ? { ...at, ...form } : { ...at, level: 'warning', message: `${target} is not checked: ${uncheckedWhy(ref.prefix)}` });
+        continue;
+      }
       const bad = D.validateRef(ref, ids, own && own.doc);
-      if (bad) issues.push({ path: p, line: ref.i + 1, ...bad, fixable: false, target: D.refId(ref, own && own.doc), source: own ? own.doc.id : null });
+      if (bad) issues.push({ ...at, ...bad });
     }
   }
   return issues;
@@ -467,7 +478,7 @@ function cmdMigrate(cfg, dryRun) {
         links += r.count;
         next = r.line;
       }
-      const s = D.expandRefs(next);
+      const s = D.expandRefs(next, { prefixes: legacy.map((t) => t.prefix) });
       shorts += s.count;
       next = s.line;
       if (next !== line) changed = true;
@@ -547,8 +558,9 @@ function pathFinder(files) {
   };
 }
 
-// Whether a repository path lies under a configured doc root.
-const inDocRoot = (cfg, p) => cfg.kinds.some((k) => p === k.rootRel || p.startsWith(`${k.rootRel}/`));
+// Whether a repository path lies under a configured doc root. A root that is the repository
+// itself holds everything, so it marks nothing: what is a doc there is told by loadDocs.
+const inDocRoot = (cfg, p) => cfg.kinds.some((k) => k.rootRel && (p === k.rootRel || p.startsWith(`${k.rootRel}/`)));
 
 // What lint says about the names in backticks the code no longer has: { ...name, why }. A path is
 // looked up in the repository's file list, minus what git ignores, like build output. An
@@ -627,9 +639,10 @@ function cmdRefs(cfg, args) {
   }
   const docs = loadDocs(cfg);
   const ids = byId(docs);
+  const owned = new Set(docs.flatMap((d) => [...d.files.keys()].map((name) => fileOf(d, name))));
   const cited = new Map();
   for (const p of files) {
-    if (inDocRoot(cfg, p)) continue;
+    if (inDocRoot(cfg, p) || owned.has(p)) continue;
     const text = readText(path.join(cfg.root, p));
     if (text === null || !D.HINT_RE.test(text)) continue;
     const { lines } = D.splitLines(text);
@@ -658,7 +671,8 @@ function cmdRefs(cfg, args) {
     const s = doc && anchor && doc.model.sections.get(anchor);
     const title = s ? s.title : doc && !anchor && !tag ? (doc.model.h1 ? doc.model.h1.text : '') : '';
     console.log(`${key}${title ? `  ${title}` : ''}`);
-    if (!doc) console.log('  does not exist');
+    if (!kindOf(cfg, prefix)) console.log(`  not checked: ${uncheckedWhy(prefix)}`);
+    else if (!doc) console.log('  does not exist');
     else if (tag) console.log(`  ${D.validateRef({ kind: 'full', prefix, num, tag }, ids).message}`);
     else if (anchor && !s) console.log(`  not found in ${doc.rel}`);
     else console.log(`  in ${fileOf(doc, s ? s.file : D.README)}${s ? `:${s.i + 1}` : ''}`);
@@ -686,7 +700,7 @@ function cmdNext(cfg, args) {
   const { prefix } = kind.type;
   let max = 0;
   for (const d of loadDocs(cfg)) if (d.prefix === prefix) max = Math.max(max, d.num);
-  const log = git(cfg.root, ['log', '--all', '--format=', '--name-only', '--', kind.rootRel]);
+  const log = git(cfg.root, ['log', '--all', '--format=', '--name-only', '--', kind.rootRel || '.']);
   if (log) {
     const re = new RegExp(`(?:^|/)${prefix}(\\d{3,})-[^/]*`);
     for (const line of log.split('\n')) {
@@ -739,7 +753,7 @@ function hook(input) {
   const touched = new Set();
   const touchedKinds = new Set();
   for (const k of cfg.kinds) {
-    const prefix = `${k.rootRel}/`;
+    const prefix = k.rootRel ? `${k.rootRel}/` : '';
     for (const p of changed) {
       if (!p.startsWith(prefix)) continue;
       const [first, ...restParts] = p.slice(prefix.length).split('/');
