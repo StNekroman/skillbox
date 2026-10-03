@@ -128,6 +128,73 @@ describe('section files', () => {
   });
 });
 
+describe('text', () => {
+  test('a line-number citation is an error, outside code fences', () => {
+    const files = only(
+      readme('SDD001', 'A', section('1', 'One', ['See orders.service.ts:120 and [x](blob/main/a.tsx#L4).', '', '```', 'at a.ts:3', '```', 'Port localhost:8080, file.ts alone.'])),
+    );
+    assert.deepEqual(messages(issuesOf(files).filter((x) => /line number/.test(x.message))), [
+      'README.md:7: cites a line number, orders.service.ts:120: lines move with every change, so cite the symbol',
+    ]);
+  });
+});
+
+describe('lint', () => {
+  const lint = (lines) => D.lintDoc(D.buildModel(only(readme('SDD001', 'A', section('1', 'One', lines))))).map((x) => `${x.i + 1}: ${x.message}`);
+
+  test('wording that tells history is a lead; the same words in a current-state sense are not', () => {
+    assert.deepEqual(lint(['The cron used to run hourly.', 'Since SDD013§P6 it is per shop.', 'Update: moved.', 'The key is used to sign.']), [
+      '7: reads as history, "used to": state what is true now',
+      '8: reads as history, "Since SDD013": state what is true now',
+      '9: reads as history, "Update:": state what is true now',
+    ]);
+    assert.deepEqual(lint(['This replaced a static cron.', 'The node briefly carried a name.', 'They were briefly two spans.']), [
+      '7: reads as history, "replaced a": state what is true now',
+      '8: reads as history, "briefly carried": state what is true now',
+      '9: reads as history, "were briefly": state what is true now',
+    ]);
+    assert.deepEqual(
+      lint(['No longer than 500 characters.', 'A refresh replaces the token.', '`used_to` and [notes](previously.md)', 'It is replaced by a copy.', 'The button is briefly disabled.', 'Then it briefly goes down.']),
+      [],
+    );
+  });
+
+  test('a label in a section title is a lead for the content step', () => {
+    const out = D.lintDoc(D.buildModel(only(readme('SDD001', 'A', section('1', 'Sellers as of (§P1), see SDD013§P2'))))).map((x) => `${x.i + 1}: ${x.message}`);
+    assert.deepEqual(out, ['5: the title carries a label, "§P1": drop it once no reference cites the label']);
+  });
+
+  test('a fence with a language is copied code; a diagram or plain text is not', () => {
+    assert.deepEqual(lint(['```ts', 'const a = 1;', 'const b = 2;', '```', '', '```mermaid', 'graph', '```', '', '```', 'box', '```']), [
+      '7: a 2-line ```ts block: copied code goes stale; state the rule it shows and cite the symbol',
+    ]);
+  });
+
+  test('only names with the shape of code are looked for in the code', () => {
+    const shape = (t) => {
+      const n = D.codeName(t);
+      return n ? `${n.kind}:${n.probe}` : null;
+    };
+    assert.deepEqual(
+      [
+        'OrdersService.senderConfig()',
+        'updateOffer(id, dto)',
+        'NOVAPOSHTA_API_KEY',
+        'apps/api/src/orders.service.ts',
+        'src/orders/',
+        'apps/web/.../cart/cart.ts',
+        'orders.service.ts',
+        '@InjectRepository',
+      ].map(shape),
+      ['name:senderConfig', 'name:updateOffer', 'name:NOVAPOSHTA_API_KEY', 'path:apps/api/src/orders.service.ts', 'dir:src/orders', 'path:cart/cart.ts', 'file:orders.service.ts', 'name:InjectRepository'],
+    );
+    assert.deepEqual(
+      ['pending', 'Order', 'npRef/npTtn', '/orders/:id', 'api.example.com/v1/', 'isXxxDestination', '_FLOOR', 'GET /x', 'a.b', 'KEY_*', 'x = 1'].map(shape),
+      new Array(11).fill(null),
+    );
+  });
+});
+
 describe('fix', () => {
   test('under the limit, it only adds the index, before the first section', () => {
     const res = D.fixDoc(mail(), ctx(1000));
@@ -355,7 +422,7 @@ describe('fix', () => {
 });
 
 describe('references', () => {
-  const kinds = (line, opts) => D.findRefs(line, opts).map((r) => `${r.kind}:${r.num ?? '-'}:${r.anchor ?? '-'}`);
+  const kinds = (line, opts) => D.findRefs(line, opts).map((r) => `${r.kind}:${r.num ?? '-'}:${r.anchor ?? (r.tag ? `#${r.tag}` : '-')}`);
 
   test('full, whole-doc and non-canonical', () => {
     assert.deepEqual(kinds('see SDD011§3.2 and SDD004, not SDD11§1'), ['full:11:3.2', 'full:4:-', 'noncanonical:11:1']);
@@ -419,11 +486,101 @@ describe('references', () => {
     assert.deepEqual(check('SDD01§1'), [{ level: 'error', message: 'write SDD001, not SDD01' }]);
   });
 
-  test('migration writes every reference in the full form', () => {
+  test('a label where a number belongs is caught; a lowercase placeholder is not a reference to check', () => {
+    assert.deepEqual(kinds('SDD013§P6. SDD006§03 and SDD014§x.y'), ['full:13:#P6', 'full:6:#03', 'full:14:-']);
+    assert.deepEqual(kinds('outside §P6, see §x.y', { bare: true }), ['bare:-:#P6']);
+  });
+
+  test('a short form reads past labels, and/or, ranges, and parentheses after a bare id', () => {
+    assert.deepEqual(kinds('SDD005§8.6 (dialog), §8.2 (sanitize), §9 (price)'), ['full:5:8.6', 'short:5:8.2', 'short:5:9']);
+    assert.deepEqual(kinds('both SDD013§4.2 and §5.1, or §5.3; SDD017§6.1–§6.2'), [
+      'full:13:4.2',
+      'short:13:5.1',
+      'short:13:5.3',
+      'full:17:6.1',
+      'short:17:6.2',
+    ]);
+    assert.deepEqual(kinds('SDD001 (esp. §7 checkout, §8 orders) and SDD004 (`names`, §7/§10)'), [
+      'full:1:-',
+      'short:1:7',
+      'short:1:8',
+      'full:4:-',
+      'short:4:7',
+      'short:4:10',
+    ]);
+    assert.deepEqual(kinds('admin merge (SDD013§P4/§P5/§5.3.1)'), ['full:13:#P4', 'short:13:#P5', 'short:13:5.3.1']);
+  });
+
+  test('parentheses holding a § after a list item are the host doc’s, and end the list', () => {
+    assert.deepEqual(kinds('SDD013§2.2.5/§2.2.6 (§4.9, §6.2.2), §7', { bare: true }), [
+      'full:13:2.2.5',
+      'short:13:2.2.6',
+      'bare:-:4.9',
+      'bare:-:6.2.2',
+      'bare:-:7',
+    ]);
+  });
+
+  test('a § after a space belongs to the id before it; after an all-caps name or a number, to another document', () => {
+    assert.deepEqual(kinds('cached (SDD007 §8, §9), see §2', { bare: true }), ['full:7:-', 'short:7:8', 'short:7:9', 'bare:-:2']);
+    assert.deepEqual(kinds('per RFC 6265 §5.3 and GDPR §17; SDD001§2 (see RFC 9110 §15)', { bare: true }), ['full:1:2']);
+  });
+
+  test('a list item followed by "of SDDnnn" is that doc’s, not the list’s', () => {
+    assert.deepEqual(kinds('SDD001§1 and §2 of SDD002'), ['full:1:1', 'prose:2:2']);
+  });
+
+  test('a label is reported with the headings that carry it', () => {
+    const model = D.buildModel(
+      only([...readme('SDD013', 'A'), ...section('1', 'Sellers (§P1)'), ...section('2', 'Offers (§P6)'), ...section('3', 'Cart (§P6, §P7)')]),
+    );
+    const docs = new Map([[13, [{ id: 'SDD013', model }]]]);
+    const check = (line) => D.findRefs(line).map((r) => D.validateRef(r, docs, null).message);
+    assert.deepEqual(check('SDD013§P1'), ['"§P1" is not a section number; the one heading in SDD013 that carries it is §1']);
+    assert.deepEqual(check('SDD013§P6'), ['"§P6" is not a section number; the headings in SDD013 that carry it: §2, §3']);
+    assert.deepEqual(check('SDD013§P9'), ['"§P9" is not a section number, and no heading in SDD013 carries it']);
+    assert.deepEqual(check('SDD099§P1'), ['SDD099 does not exist']);
+  });
+
+  test('a label counts only where a heading carries it bare; failing that, the docs whose headings do are named', () => {
+    const sdd013 = D.buildModel(only([...readme('SDD013', 'A'), ...section('1', 'Sellers (§P1)'), ...section('2', 'Offers (§P6)')]));
+    const sdd002 = D.buildModel(only([...readme('SDD002', 'B'), ...section('1', 'Checkout (SDD013§P6)')]));
+    const own = { id: 'SDD002', model: sdd002 };
+    const docs = new Map([[2, [own]], [13, [{ id: 'SDD013', model: sdd013 }]]]);
+    const check = (line) => D.findRefs(line, { bare: true }).map((r) => D.validateRef(r, docs, own).message);
+    assert.deepEqual(check('since §P6'), ['"§P6" is not a section number; no heading in SDD002 carries it, but these do: SDD013 (§2)']);
+    assert.deepEqual(check('since §P9'), ['"§P9" is not a section number, and no heading in SDD002 carries it']);
+  });
+
+  test('a section title is read for what it cites; a bare label in it is where the label is defined', () => {
+    const lines = ['### §1.2 Checkout (SDD013§P6) as landed (§P6), see §1.1', ''];
+    const refs = D.refsInFile('1.md', lines, { markdown: true, inDoc: true });
+    assert.deepEqual(refs.map((r) => `${r.kind}:${r.anchor ?? `#${r.tag}`}`), ['full:#P6', 'bare:1.1']);
+  });
+
+  test('a section written after a link, with or without a space, is the link’s', () => {
+    assert.deepEqual(kinds('[SDD007](SDD007-seo.md) §4.4.1 and §2', { markdown: true, bare: true }), ['link:7:4.4.1', 'bare:-:2']);
+  });
+
+  test('migration writes every reference in the full form, a list joined by commas', () => {
     assert.deepEqual(D.expandRefs('(SDD006§2.4.1/§12), SDD013§2.2.4, §5.2.1.1; §8.1.2 of SDD006'), {
-      line: '(SDD006§2.4.1/SDD006§12), SDD013§2.2.4, SDD013§5.2.1.1; SDD006§8.1.2',
+      line: '(SDD006§2.4.1, SDD006§12), SDD013§2.2.4, SDD013§5.2.1.1; SDD006§8.1.2',
       count: 3,
     });
+    const expand = (line) => D.expandRefs(line).line;
+    assert.equal(expand('SDD005§8.6 (dialog), §8.2 (sanitize)'), 'SDD005§8.6 (dialog), SDD005§8.2 (sanitize)');
+    assert.equal(expand('SDD013§4.2 and §5.1; SDD017§6.1–§6.2'), 'SDD013§4.2 and SDD013§5.1; SDD017§6.1–SDD017§6.2');
+    assert.equal(expand('SDD001 (esp. §7, §8) and SDD004 (`x`, §7 / §10)'), 'SDD001 (esp. SDD001§7, SDD001§8) and SDD004 (`x`, SDD004§7, SDD004§10)');
+    assert.equal(expand('(SDD007 §4.2/§4.3), RFC 6265 §5.3'), '(SDD007§4.2, SDD007§4.3), RFC 6265 §5.3');
+    assert.equal(expand('SDD013§P4/§P5/§5.3.1'), 'SDD013§P4, SDD013§P5, SDD013§5.3.1');
+    assert.equal(expand('SDD002§8/SDD003§4.7, SDD014§x.y'), 'SDD002§8/SDD003§4.7, SDD014§x.y');
+  });
+
+  test('a link with the section inside its text or after a space comes out in the full form', () => {
+    const migrate = (line) => D.expandRefs(D.rewriteDocLinks(line, (base) => ({ 'SDD014-abac.md': 'SDD014' })[base]).line).line;
+    assert.equal(migrate('in **[SDD014 §5](../sdd/SDD014-abac.md)**'), 'in **SDD014§5**');
+    assert.equal(migrate('[SDD014](SDD014-abac.md) §3.1/§3.2'), 'SDD014§3.1, SDD014§3.2');
+    assert.equal(migrate('in **[SDD014 — ABAC](../sdd/SDD014-abac.md) §4**: the guard'), 'in **SDD014 — ABAC (SDD014§4)**: the guard');
   });
 
   test('migration turns links to single-file SDDs into ids', () => {

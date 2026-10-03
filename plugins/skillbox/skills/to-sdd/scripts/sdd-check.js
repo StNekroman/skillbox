@@ -6,6 +6,8 @@
 //                               sections of files over the limit into their own files; then check
 //   migrate                     move single-file SDDs into folders, turn links to them into ids,
 //                               expand short-form references across the repository; then fix
+//   lint [SDDnnn ...]           content leads for the agent, all warnings: wording that tells
+//                               history, copied code, names in backticks the code no longer has
 //   refs --changed | <file ...> the SDD sections that changed files, or the given files, cite
 //   next                        the id a new SDD takes
 //   hook                        the Stop hook: reads the hook input on stdin, checks the SDDs
@@ -89,8 +91,8 @@ function requireMaxLines(cfg) {
 }
 
 // git's output, or null when it is missing or exits with a status not in `ok`.
-function git(cwd, args, ok = [0]) {
-  const r = spawnSync('git', args, { cwd, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, windowsHide: true });
+function git(cwd, args, ok = [0], input = undefined) {
+  const r = spawnSync('git', args, { cwd, input, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, windowsHide: true });
   return ok.includes(r.status) ? r.stdout : null;
 }
 
@@ -144,7 +146,9 @@ function changedFiles(root) {
     .map((abs) => rel(base, abs));
 }
 
-// A file's text, or null for one too big or binary to hold references.
+// A file's text, or null for one too big or binary to hold references. A NUL byte near the start
+// marks a file binary, as it does for git — but not a source file, where one can sit in a string
+// literal.
 function readText(abs) {
   let buf;
   try {
@@ -152,7 +156,7 @@ function readText(abs) {
   } catch {
     return null;
   }
-  if (buf.length > MAX_TEXT_BYTES || buf.subarray(0, 8000).includes(0)) return null;
+  if (buf.length > MAX_TEXT_BYTES || (!D.isSourceFile(abs) && buf.subarray(0, 8000).includes(0))) return null;
   return buf.toString('utf8');
 }
 
@@ -210,11 +214,12 @@ function byNum(docs) {
 const fileOf = (doc, name) => (doc.kind === 'folder' ? `${doc.rel}/${name}` : doc.rel);
 
 // The files a reference scan reads. With git: those `git grep` finds SDD in — tracked or
-// untracked, ignored ones excluded, binaries and files deleted from the worktree skipped — plus
-// the SDD files themselves, whose bare § references name their own sections. Without git: every
-// file the walk finds, and the scan reads each to find out.
+// untracked, ignored ones excluded, files deleted from the worktree skipped — plus the SDD files
+// themselves, whose bare § references name their own sections. Binaries are listed too, and
+// readText drops them: git's own test would also drop a source file with a NUL in a string.
+// Without git: every file the walk finds, and the scan reads each to find out.
 function citingFiles(cfg, docs) {
-  const out = git(cfg.root, ['grep', '-lIz', '--untracked', '-e', 'SDD'], [0, 1]); // 1: no match
+  const out = git(cfg.root, ['grep', '-lz', '--untracked', '-e', 'SDD'], [0, 1]); // 1: no match
   if (out === null) return repoFiles(cfg.root);
   const found = new Set(out.split('\0').filter(Boolean));
   for (const d of docs) for (const name of d.files.keys()) found.add(fileOf(d, name));
@@ -452,6 +457,98 @@ function cmdMigrate(cfg, dryRun) {
   return report(collectIssues(cfg, after, null, citingFiles(cfg, after)));
 }
 
+// Docs keep names the code dropped, so a name found only in one proves nothing. Migrations keep
+// the names they delete, so a name found only in one may be gone.
+const DOC_FILE_RE = /\.(?:md|mdx|markdown|txt|rst|adoc)$/i;
+const MIGRATION_RE = /(?:^|\/)(?:migrations|migrate)\//i;
+
+// Whether a path the SDD names is one of the repository's files. A path from the repository root
+// must be exact. A shorter one, like orders/orders.service.ts, may skip directories, so long as the
+// file name matches and the directories it names come in order.
+function pathFinder(files) {
+  const top = new Set(files.map((f) => f.split('/')[0]));
+  const byBase = new Map();
+  for (const f of files) {
+    const base = f.slice(f.lastIndexOf('/') + 1);
+    if (!byBase.has(base)) byBase.set(base, []);
+    byBase.get(base).push(f);
+  }
+  const inOrder = (dirs, f) => {
+    const parts = f.split('/');
+    let k = 0;
+    for (const p of parts.slice(0, -1)) if (p === dirs[k]) k++;
+    return k === dirs.length;
+  };
+  const segments = new Set(files.flatMap((f) => f.split('/')));
+  return {
+    path: (p) => {
+      const parts = p.split('/');
+      const same = byBase.get(parts[parts.length - 1]) || [];
+      return top.has(parts[0]) ? same.includes(p) : same.some((f) => inOrder(parts.slice(0, -1), f));
+    },
+    dir: (p) => files.some((f) => f.startsWith(`${p}/`) || f.includes(`/${p}/`)),
+    // A directory may carry a file's name too: app/sitemap.xml/route.ts serves sitemap.xml.
+    file: (p) => segments.has(p),
+  };
+}
+
+// What lint says about the names in backticks the code no longer has: { ...name, why }. A path is
+// looked up in the repository's file list, minus what git ignores, like build output. An
+// identifier is looked up among the words of every text file but the SDDs and the docs, read once
+// for all the names.
+function missingNames(cfg, names) {
+  const files = repoFiles(cfg.root);
+  const has = pathFinder(files);
+  const code = new Set();
+  const migrations = new Set();
+  if (names.some((n) => n.kind === 'name')) {
+    const inSdd = (p) => p === cfg.sddRootRel || p.startsWith(`${cfg.sddRootRel}/`);
+    for (const p of files) {
+      if (inSdd(p) || DOC_FILE_RE.test(p)) continue;
+      const text = readText(path.join(cfg.root, p));
+      const into = MIGRATION_RE.test(p) ? migrations : code;
+      if (text) for (const m of text.matchAll(/[A-Za-z_]\w*/g)) into.add(m[0]);
+    }
+  }
+  const absent = [...new Set(names.filter((n) => n.kind !== 'name' && !has[n.kind](n.probe)).map((n) => n.probe))];
+  const listed = absent.length ? git(cfg.root, ['check-ignore', '--stdin', '--no-index'], [0, 1], absent.join('\n')) : '';
+  const ignored = new Set((listed || '').split(/\r?\n/).filter(Boolean));
+  const out = [];
+  for (const n of names) {
+    if (n.kind !== 'name') {
+      if (absent.includes(n.probe) && !ignored.has(n.probe)) out.push({ ...n, why: `no such ${n.kind === 'dir' ? 'directory' : 'file'} in the repository` });
+    } else if (!code.has(n.probe)) {
+      out.push({ ...n, why: migrations.has(n.probe) ? `${n.probe} is only in migrations: check whether one drops it` : `no ${n.probe} in the code` });
+    }
+  }
+  return out;
+}
+
+// Leads for a content pass: what lintDoc finds, and the names in backticks the code no longer
+// has. All warnings, since each needs a reading to confirm; the exit status is 0.
+function cmdLint(cfg, args) {
+  requireSddRoot(cfg);
+  const docs = loadDocs(cfg);
+  const sel = select(docs, args);
+  const mine = docs.filter((d) => !sel || sel.has(d.id));
+  const issues = [];
+  for (const d of mine) {
+    for (const x of D.lintDoc(d.model)) issues.push({ path: fileOf(d, x.file), line: x.i + 1, level: 'warning', message: x.message });
+  }
+  const names = mine.flatMap((d) => D.codeNames(d.model).map((n) => ({ ...n, path: fileOf(d, n.file) })));
+  for (const n of missingNames(cfg, names)) {
+    issues.push({ path: n.path, line: n.i + 1, level: 'warning', message: `\`${n.token}\`: ${n.why}` });
+  }
+  issues.sort((a, b) => a.path.localeCompare(b.path, 'en') || a.line - b.line);
+  for (const x of issues) console.log(formatIssue(x));
+  console.log(
+    issues.length
+      ? `\n${issues.length} warning${issues.length === 1 ? '' : 's'}: leads, not verdicts. Confirm each against the code before changing the text.`
+      : 'Nothing to report.',
+  );
+  return 0;
+}
+
 // The sections the given files cite, each with where it lives and who cites it. Files inside
 // the SDD folders are skipped: this is for finding which docs a code change may have made wrong.
 // A citation in a non-canonical spelling (SDD1§2) is listed under the id it means, with a note,
@@ -477,8 +574,9 @@ function cmdRefs(cfg, args) {
     if (text === null || !text.includes('SDD')) continue;
     const { lines } = D.splitLines(text);
     for (const ref of D.refsInFile(p, lines, { markdown: /\.mdx?$/i.test(p), inDoc: false })) {
-      const key = `${D.docId(ref.num)}${ref.anchor ? `§${ref.anchor}` : ''}`;
-      if (!cited.has(key)) cited.set(key, { num: ref.num, anchor: ref.anchor, by: [] });
+      const at = ref.anchor || ref.tag;
+      const key = `${D.docId(ref.num)}${at ? `§${at}` : ''}`;
+      if (!cited.has(key)) cited.set(key, { num: ref.num, anchor: ref.anchor, tag: ref.tag, by: [] });
       const note = ref.kind === 'noncanonical' ? ` (as ${ref.text}; write ${key})` : '';
       cited.get(key).by.push(`${p}:${ref.i + 1}${note}`);
     }
@@ -487,18 +585,20 @@ function cmdRefs(cfg, args) {
     console.log('No SDD references in those files.');
     return 0;
   }
+  // By doc; within one, the doc itself, then its sections in order, then labels.
   const keys = [...cited.keys()].sort((a, b) => {
     const x = cited.get(a);
     const y = cited.get(b);
-    return x.num - y.num || D.compareAnchors(x.anchor || '0', y.anchor || '0');
+    return x.num - y.num || Boolean(x.tag) - Boolean(y.tag) || (x.tag ? a.localeCompare(b) : D.compareAnchors(x.anchor || '0', y.anchor || '0'));
   });
   for (const key of keys) {
-    const { num, anchor, by } = cited.get(key);
+    const { num, anchor, tag, by } = cited.get(key);
     const doc = (nums.get(num) || [])[0];
     const s = doc && anchor && doc.model.sections.get(anchor);
-    const title = s ? s.title : doc && !anchor ? (doc.model.h1 ? doc.model.h1.text : '') : '';
+    const title = s ? s.title : doc && !anchor && !tag ? (doc.model.h1 ? doc.model.h1.text : '') : '';
     console.log(`${key}${title ? `  ${title}` : ''}`);
     if (!doc) console.log('  does not exist');
+    else if (tag) console.log(`  ${D.validateRef({ kind: 'full', num, tag }, nums).message}`);
     else if (anchor && !s) console.log(`  not found in ${doc.rel}`);
     else console.log(`  in ${fileOf(doc, s ? s.file : D.README)}${s ? `:${s.i + 1}` : ''}`);
     console.log(`  cited by ${by.join(', ')}`);
@@ -596,7 +696,7 @@ function hook(input) {
 
 // ---------------------------------------------------------------- main
 
-const USAGE = 'usage: sdd-check.js <check|fix|migrate|refs|next|hook> [SDDnnn ...] [--dry-run]';
+const USAGE = 'usage: sdd-check.js <check|fix|migrate|lint|refs|next|hook> [SDDnnn ...] [--dry-run]';
 
 function main(argv = process.argv.slice(2)) {
   const [cmd, ...rest] = argv;
@@ -610,13 +710,14 @@ function main(argv = process.argv.slice(2)) {
     process.exitCode = hook(readStdin());
     return;
   }
-  if (!cmd || !['check', 'fix', 'migrate', 'refs', 'next'].includes(cmd)) fail(USAGE);
+  if (!cmd || !['check', 'fix', 'migrate', 'lint', 'refs', 'next'].includes(cmd)) fail(USAGE);
   const root = findRoot(process.cwd());
   if (!root) fail(`no ${CONFIG_NAME} in this directory or above; the to-sdd skill's init creates it`);
   const cfg = loadConfig(root);
   if (cmd === 'check') process.exitCode = cmdCheck(cfg, args);
   else if (cmd === 'fix') process.exitCode = cmdFix(cfg, args, dryRun);
   else if (cmd === 'migrate') process.exitCode = cmdMigrate(cfg, dryRun);
+  else if (cmd === 'lint') process.exitCode = cmdLint(cfg, args);
   else if (cmd === 'refs') process.exitCode = cmdRefs(cfg, args);
   else process.exitCode = cmdNext(cfg);
 }

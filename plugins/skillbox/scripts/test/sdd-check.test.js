@@ -129,6 +129,26 @@ describe('check', () => {
     assert.doesNotMatch(r.stdout, /SDD001|abstract/);
   });
 
+  test('a label cited where a number belongs fails, naming the headings that carry it', (t) => {
+    const root = repo(t, {
+      ...folderDoc('docs/sdd/SDD001-mail', readme('SDD001', 'Mail', [...section('1', 'Queue (§P1)'), ...section('2', 'Sending'), 'Since §P1 it retries.', ''])),
+      'src/mail.ts': ['// SDD001§P1, SDD001 §2', 'export {};'],
+    });
+    const r = run(root, ['check']);
+    assert.equal(r.status, 1);
+    assert.match(r.stdout, /^src\/mail\.ts:1: "§P1" is not a section number; the one heading in SDD001 that carries it is §1$/m);
+    assert.match(r.stdout, /^src\/mail\.ts:1: short form: write SDD001§2, not §2 after SDD001$/m);
+    assert.match(r.stdout, /^docs\/sdd\/SDD001-mail\/README\.md:\d+: "§P1" is not a section number; the one heading/m);
+  });
+
+  test('a source file with a NUL byte in a string is still read; a binary is not', (t) => {
+    const root = repo(t, { ...mailDoc(), 'src/sep.ts': 'export const SEP = "\0";\n// SDD001§9\n', 'img/logo.png': '\0\0PNG SDD404\n' });
+    const r = run(root, ['check']);
+    assert.equal(r.status, 1);
+    assert.match(r.stdout, /^src\/sep\.ts:2: SDD001 has no §9$/m);
+    assert.doesNotMatch(r.stdout, /SDD404/);
+  });
+
   test('two SDDs with one number are a clash', (t) => {
     const root = repo(t, {
       ...folderDoc('docs/sdd/SDD003-rates', readme('SDD003', 'Rates')),
@@ -197,18 +217,22 @@ describe('migrate', () => {
         '---',
         '',
         ...section('1', 'Overview', body('one', 20)),
-        ...section('2', 'Delivery', ['Rates come from [SDD002](SDD002-rates.md)§1.', ...body('two', 20)]),
+        ...section('2', 'Delivery', [
+          'Rates come from [SDD002](SDD002-rates.md)§1.',
+          'Tables: SDD002§1 (rates), §2 (zones); §1 here.',
+          ...body('two', 20),
+        ]),
       ]),
-      'docs/sdd/SDD002-rates.md': readme('SDD002', 'Rates', section('1', 'Tables')),
+      'docs/sdd/SDD002-rates.md': readme('SDD002', 'Rates', [...section('1', 'Tables'), ...section('2', 'Zones')]),
       'docs/tickets/feature-x.md': ['Implements [the mail design](../sdd/SDD001-mail.md).'],
-      'src/mail.ts': ['// SDD001§1/§2 and §1 of SDD002', 'export {};'],
+      'src/mail.ts': ['// SDD001§1/§2 and §1 of SDD002', '// Zones: SDD002 §2.', 'export {};'],
     });
 
     const dry = run(root, ['migrate', '--dry-run']);
     assert.equal(dry.status, 0, dry.stdout);
-    assert.match(dry.stdout, /Links to single-file SDDs turned into ids: 2\. References rewritten into the full form: 2\./);
+    assert.match(dry.stdout, /Links to single-file SDDs turned into ids: 2\. References rewritten into the full form: 4\./);
     assert.ok(fs.existsSync(path.join(root, 'docs/sdd/SDD001-mail.md')), 'a dry run moves nothing');
-    assert.equal(read(root, 'src/mail.ts'), '// SDD001§1/§2 and §1 of SDD002\nexport {};\n');
+    assert.equal(read(root, 'src/mail.ts'), '// SDD001§1/§2 and §1 of SDD002\n// Zones: SDD002 §2.\nexport {};\n');
 
     const r = run(root, ['migrate']);
     assert.equal(r.status, 0, r.stdout + r.stderr);
@@ -216,8 +240,9 @@ describe('migrate', () => {
     assert.deepEqual(fs.readdirSync(path.join(root, 'docs/sdd/SDD001-mail')).sort(), ['1.md', '2.md', 'README.md']);
     assert.deepEqual(fs.readdirSync(path.join(root, 'docs/sdd/SDD002-rates')), ['README.md']);
     assert.equal(read(root, 'docs/tickets/feature-x.md'), 'Implements the mail design (SDD001).\n');
-    assert.equal(read(root, 'src/mail.ts'), '// SDD001§1/SDD001§2 and SDD002§1\nexport {};\n');
+    assert.equal(read(root, 'src/mail.ts'), '// SDD001§1, SDD001§2 and SDD002§1\n// Zones: SDD002§2.\nexport {};\n');
     assert.match(read(root, 'docs/sdd/SDD001-mail/2.md'), /^Rates come from SDD002§1\.$/m);
+    assert.match(read(root, 'docs/sdd/SDD001-mail/2.md'), /^Tables: SDD002§1 \(rates\), SDD002§2 \(zones\); §1 here\.$/m);
     const entry = read(root, 'docs/sdd/SDD001-mail/README.md');
     assert.ok(entry.includes(`${D.INDEX_OPEN}\n- [§1 Overview](1.md)\n- [§2 Delivery](2.md)\n${D.INDEX_CLOSE}`), entry);
     assert.doesNotMatch(entry, /\*\*§1 Overview\*\*/);
@@ -228,6 +253,62 @@ describe('migrate', () => {
     const r = run(repo(t, mailDoc()), ['migrate']);
     assert.equal(r.status, 0);
     assert.match(r.stdout, /Nothing to migrate/);
+  });
+});
+
+describe('lint', () => {
+  const doc = () =>
+    folderDoc(
+      'docs/sdd/SDD001-mail',
+      readme('SDD001', 'Mail', [
+        ...section('1', 'Sending', [
+          '`MailService.send()` in `src/mail/mail.service.ts` queues it; `MailService.sendLater()` used to batch.',
+          '`MAIL_SENDER_KEY` and `MAIL_OLD_KEY` come from `src/config/`; see `src/gone/old.ts` and `mail.dto.ts`.',
+          'The feed, `feed.xml`, is `app/feed.xml/route.ts`; `mail/mail.service.ts` is short; `src/mail.service.ts` is wrong.',
+          'Built into `dist/mail.js`, with `VARCHAR(500)` columns from `ensureMailTable()`; dates by `formatMailDate()`.',
+        ]),
+      ]),
+    );
+  const code = {
+    '.gitignore': ['dist/'],
+    'src/mail/mail.service.ts': ['export class MailService { send() {} }', 'const k = process.env.MAIL_SENDER_KEY;'],
+    'src/app/feed.xml/route.ts': ['export {};'],
+    'src/mail/format.ts': 'export const formatMailDate = () => "\0";\n',
+    'src/config/index.ts': ['export {};'],
+    'src/migrations/001-drop.ts': ['// drops MAIL_OLD_KEY and sendLater; ensureMailTable()'],
+    'docs/tickets/old.md': ['MailService.sendLater() and mail.dto.ts'],
+  };
+
+  const expected = [
+    'reads as history, "used to": state what is true now',
+    '`MailService.sendLater()`: sendLater is only in migrations: check whether one drops it',
+    '`MAIL_OLD_KEY`: MAIL_OLD_KEY is only in migrations: check whether one drops it',
+    '`src/gone/old.ts`: no such file in the repository',
+    '`mail.dto.ts`: no such file in the repository',
+    '`src/mail.service.ts`: no such file in the repository',
+    '`ensureMailTable()`: ensureMailTable is only in migrations: check whether one drops it',
+  ];
+  const warnings = (stdout) =>
+    stdout
+      .split('\n')
+      .filter((l) => l.startsWith('docs/'))
+      .map((l) => l.replace(/^docs\/sdd\/SDD001-mail\/README\.md:\d+: warning: /, ''));
+
+  test('lists history wording and the names the code no longer has, docs aside and what git ignores', needsGit, (t) => {
+    const root = repo(t, { ...doc(), ...code });
+    const r = run(root, ['lint']);
+    assert.equal(r.status, 0, r.stderr);
+    assert.deepEqual(warnings(r.stdout), expected);
+    assert.match(r.stdout, /7 warnings: leads, not verdicts/);
+  });
+
+  test('without git, the names are looked for in every file the walk finds', (t) => {
+    const root = repo(t, { ...doc(), ...code }, { useGit: false });
+    const r = run(root, ['lint', 'SDD001']);
+    assert.equal(r.status, 0, r.stderr);
+    const noGit = [...expected];
+    noGit.splice(6, 0, '`dist/mail.js`: no such file in the repository');
+    assert.deepEqual(warnings(r.stdout), noGit);
   });
 });
 

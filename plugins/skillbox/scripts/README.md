@@ -14,8 +14,8 @@ requires nothing from here. The skill runs it through `${CLAUDE_SKILL_DIR}`, and
 | `fork-at.js` | Resolves a cut point and opens a window at once; in that window, creates the child with one headless turn and resumes it |
 | `fork-tree.js` | Renders the fork tree; interactive picker when run from a TTY |
 | `lib/fork-graph.js` | Shared: transcript reading, edge collection, session metadata, terminal launching |
-| `../skills/to-sdd/scripts/sdd-check.js` | SDD checks and repairs — `check`, `fix`, `migrate`, `refs`, `next` — and the Stop hook, `hook`. Disk and git work only |
-| `../skills/to-sdd/scripts/lib/sdd-doc.js` | The SDD model, pure: parsing a doc, the rules, the mechanical repairs, finding references |
+| `../skills/to-sdd/scripts/sdd-check.js` | SDD checks and repairs — `check`, `fix`, `migrate`, `lint`, `refs`, `next` — and the Stop hook, `hook`. Disk and git work only |
+| `../skills/to-sdd/scripts/lib/sdd-doc.js` | The SDD model, pure: parsing a doc, the rules, the mechanical repairs, finding references, the content leads |
 | `test/` | Unit and end-to-end tests for all of the above, run with Node's built-in runner |
 
 Run them directly for things a slash command cannot do — `fork-tree.js` from a real terminal gets
@@ -78,11 +78,39 @@ stdin. Tests that need git are skipped where it is not installed.
 
 `sdd-check.js` finds the repository by walking up to `.skillbox/tickets.json`, and reads
 `paths.sddRoot` and `sdd.maxLines` from it. The split rule, the formats and the reasons behind them
-are in the [to-sdd README](../skills/to-sdd/README.md); two things matter here.
+are in the [to-sdd README](../skills/to-sdd/README.md); these matter here.
 
 **`fix` refuses rather than guesses.** A doc with a structural problem — an anchor defined twice, a
 section with no parent, an unnumbered heading at section level — is left untouched, because moving
 text around it could misplace some. Everything else it repairs is mechanical and idempotent.
+
+**One grammar for references, shared by `check` and `migrate`.** `findRefs` in `lib/sdd-doc.js`
+reads every way a § can borrow the id before it: a list joined by commas, slashes, dashes, `and`
+or `or`, read past a parenthesised label without a § (`SDD005§8.6 (dialog), §8.2`); parentheses
+straight after a bare id (`SDD001 (esp. §7)`); a § after a space (`SDD007 §8`). `check` reports
+each as a short form, and `migrate`'s `expandRefs` rewrites exactly those, so the two cannot
+disagree. Parentheses holding a § after an *anchored* reference are the citing doc's own
+(`SDD013§2.2 (§4.9)` in SDD002 cites SDD002's §4.9), and a § after an all-caps name or a number
+is another document's (`RFC 6265 §5.3`). A label where the number belongs (`SDD013§P6`) is an
+error, not a whole-doc reference; lowercase letters (`§x.y`) are a placeholder and left alone.
+The error names the sections whose titles carry the label bare, `(§P6)`, in the doc cited, or
+else in every SDD that has them: a bare label in SDD002 is usually another doc's. A section's
+title is read for what it cites, like any text; a bare label in a title is where the label is
+defined, so `lint` reports it instead, for the content step that comes after the references.
+
+A source file is read for references even when it holds a NUL byte, which git takes for binary:
+one in a string literal would otherwise hide the file's citations from `check` and its names from
+`lint`. Other files with a NUL are skipped.
+
+**`lint` gives leads, never verdicts.** History wording is a phrase list; a fence with a language
+other than a diagram or plain text is copied code. Names in backticks are looked up only when
+they have the shape of code — a path with an extension, a dotted member, a call, camelCase,
+snake_case. Identifiers are matched as whole words against every text file outside the SDDs and
+the docs, read once, so a run costs one pass over the repository however many names there are.
+A name found only under a `migrations/` directory is reported as such, since a migration keeps
+the names it deletes. A path is matched against the file list: exactly from the root, loosely
+(the directories it names, in order) when shorter, and a path git ignores — build output — is
+not reported. It needs no git; without it the walk supplies the file list.
 
 **The reference scan reads only what can cite.** With git, `check`, `fix` and `migrate` read the
 files `git grep` finds `SDD` in — tracked or untracked, ignored ones excluded — plus the SDD files
@@ -134,7 +162,7 @@ A Claude Code upgrade is the likeliest thing to break this.
 
 `sdd-check.js` writes only inside the repository it runs in, and only for `fix` and `migrate`
 without `--dry-run`: SDD files, and — for `migrate` — the files whose links and references it
-rewrites. It never stages or commits. The hook writes nothing.
+rewrites. It never stages or commits. The hook, `check`, `lint`, `refs` and `next` write nothing.
 
 The fork scripts write in the config directory, all additive and safe to delete:
 

@@ -72,9 +72,19 @@ its internals and tests are documented in the plugin's
 |---|---|
 | `check [SDDnnn …]` | Every rule, including every reference to an SDD anywhere in the repository |
 | `fix [SDDnnn …]` | Regenerates indexes and breadcrumbs, sets heading levels, splits files over the limit |
+| `lint [SDDnnn …]` | Leads for the content rules, all warnings: wording that tells history, fenced code, names in backticks the code no longer has |
 | `refs --changed` | The sections the changed code cites — how the skill finds what a change may have made wrong |
 | `next` | The id a new SDD takes, counting every number in git history, deleted ones included |
 | `migrate [--dry-run]` | Single-file SDDs (`SDDnnn-slug.md`) into folders, links to them into ids, short-form references into the full form |
+
+`check` sees a reference however it was written, a section's title included: in a list
+(`SDD006§2.4.1/§12`, `SDD013§4.2 and §5.1`), after a space (`SDD007 §8`), in parentheses after an
+id (`SDD001 (esp. §7)`), or with a label where the number belongs (`SDD013§P6`, reported with the
+headings that carry the label).
+Each of these is an error, so none can quietly read as the citing doc's own section. A line-number
+citation in an SDD is an error too. `migrate` writes the forms it can resolve in the full form, so
+what is left after it is the work for the agent: `check` lists the reference errors, `lint` the
+content leads.
 
 The plugin also ships a **Stop hook**, Claude Code only, that runs the same rules at the end of
 every turn, on the SDD folders changed since `HEAD` only. It is silent when they pass; when they do
@@ -88,7 +98,7 @@ runs without the plugin, there is no hook: the skill's own `fix` and `check` are
 | | |
 |---|---|
 | Config | `paths.sddRoot` and `sdd.maxLines` — see [references/config.md](references/config.md). The limit has no default; the init writes 500 |
-| Git | For `refs --changed`, `next` and the hook. `check`, `fix` and `migrate` work without it |
+| Git | For `refs --changed`, `next` and the hook. `check`, `fix`, `migrate` and `lint` work without it |
 | Tools | Read, grep, git, and the script. It never runs builds or tests |
 
 ## Files here

@@ -2,7 +2,7 @@
 name: to-sdd
 description: Keep the repository’s SDDs — the agent-written memory of how each feature area works — true after a code change. Corrects the sections a change made wrong, adds sections for new architecture, creates an SDD for an area none covers, and keeps each file under the size limit. Writes nothing when the change is below the bar. Use at the end of a task that changed code, or when asked to create, update or migrate SDDs; do not use for ADRs, tickets or code comments.
 metadata:
-  prompt-version: "2026-10-01.1"
+  prompt-version: "2026-10-01.2"
 ---
 
 # Keep the SDDs true
@@ -22,7 +22,7 @@ So a wrong SDD is worse than a missing one. This skill runs at the end of a task
 5. **Read each affected SDD.** Start with its `README.md`: the abstract, then the index. Every index entry links the file that holds its section. Then read the sections the change touches, and their parents.
 6. **Decide what each SDD needs:** corrected statements, new sections, a new SDD, or nothing.
 7. **Write it**, following `The format` and `Content`.
-8. **Run `fix`, then `check`**, both scoped to the SDDs you wrote. Repair what `check` still reports.
+8. **Run `fix`, then `check`, then `lint`**, all scoped to the SDDs you wrote. Repair what `check` still reports. Each `lint` warning is a lead: confirm it against the code, and correct the text where it is wrong.
 9. **Report.** See `Finish`.
 
 ## The bar
@@ -88,9 +88,13 @@ A single-file SDD, `SDDnnn-<slug>.md` directly in `paths.sddRoot`, is the old fo
 1. Run `migrate --dry-run` and summarise what it would do:
    - each file becomes `SDDnnn-<slug>/README.md`, split into section files where it is over the limit;
    - every markdown link to those files, anywhere in the repository, becomes the plain id;
-   - every reference in the short or prose form becomes the full form.
+   - every reference in a short or prose form becomes the full form: `SDD006§2.4.1/§12`, `SDD013§4.2 and §5.1`, `SDD007 §8`, `SDD001 (esp. §7)` and "§8.1.2 of SDD006" all come out as `SDDnnn§x.y`, a list joined by commas.
 2. Suggest committing first, so the migration is one diff to review.
-3. On yes, run `migrate`. Then repair what it reports, following `After fix and check`. A doc that `migrate` moved without splitting had a structural problem. Repair that, then run `fix` on it.
+3. On yes, run `migrate`. It does only the mechanical part: the text is as the old rules left it. Repair the rest in this order.
+   1. **References, across the repository**, before any SDD's text changes. Run `check` and repair each reference error. A label cited where a section number belongs, such as `SDD013§P6`, is reported with the headings that carry that label. Pick the section it means, or drop the reference when the sentence around it only tells history. Do this step first: the content step may take the labels out of the headings, and then nothing is left to resolve them by.
+   2. **Structure.** A doc that `migrate` moved without splitting had a structural problem. Repair it, then run `fix` on it.
+   3. **Content, one SDD at a time.** Run `lint SDDnnn` for the leads, then read the whole SDD and bring it to `Content`. Shorten an abstract over the limit. Delete any note on how to cite or number the doc: the instructions block holds those rules now, and an old note may contradict them. The SDDs are independent of each other, so where you can hand work to subagents, give each SDD its own.
+   4. **The agent instructions.** Replace the old SDD rules, as `The agent instructions` describes. `check` may report example ids in the old rules, and replacing them clears those.
 
 Design docs named another way, such as `SDD-001-mail.md` or a `design/` folder, are not SDDs to the script. If the repository has them, ask whether to bring them into the format. That work is manual: rename each file to `SDDnnn-<slug>.md` under `paths.sddRoot`, then migrate.
 
@@ -141,8 +145,9 @@ After the abstract, the README may hold a few short lines, such as a note on how
 
 ## References
 
-- **Outside an SDD's own files, write the full form every time:** `SDD006§2.4.1`. In a list, write `SDD006§2.4.1, SDD006§12`, never `SDD006§2.4.1/§12`. Write `SDD006§8.1.2`, never "§8.1.2 of SDD006". A search for `SDD006§12` has to find every line that cites it.
-- **Inside an SDD's own files,** a bare `§3.2` means a section of that SDD. Another SDD takes its id, `SDD004§1.3`.
+- **Outside an SDD's own files, write the full form every time:** `SDD006§2.4.1`. In a list, write `SDD006§2.4.1, SDD006§12`, never `SDD006§2.4.1/§12`. Write `SDD006§8.1.2`, never "§8.1.2 of SDD006" or `SDD006 §8.1.2`. A search for `SDD006§12` has to find every line that cites it.
+- **Inside an SDD's own files,** a bare `§3.2` means a section of that SDD. Another SDD takes its id every time, `SDD004§1.3`: a bare § right after another SDD's reference, in the same list, is read as that SDD's section. A document outside the repository keeps its own name, `RFC 9110 §15`, and is not checked.
+- **A § is followed by a section number.** A label in its place, such as `SDD013§P6` for a project phase, finds no heading.
 - **Never cite an SDD by a file path or a markdown link.** The id never moves; a path moves when a file splits.
 - **Cite the section in the code.** When a new section describes code that did not cite an SDD before, add one reference, `SDDnnn§x.y`, in a comment at that code's entry point. That reference is how the next change to that code finds the section. One per entry point is enough; do not cite on every function.
 - **Link the ADR behind a design choice** when the repository has one. Put a relative path in the section that describes the choice. Leave the reasons to the ADR and do not restate them.
@@ -178,7 +183,8 @@ node "${CLAUDE_SKILL_DIR}/scripts/sdd-check.js" <command>
 | `next` | Before creating an SDD: the id it takes |
 | `fix SDDnnn …` | After writing. It regenerates the index and breadcrumbs, sets heading levels, and moves sections out of files over the limit. It rewrites files, so read a file again before editing it further |
 | `check SDDnnn …` | After `fix`. It runs every rule, including references to those SDDs from anywhere in the repository |
-| `migrate --dry-run`, `migrate` | First run only: single-file SDDs into folders |
+| `lint SDDnnn …` | After `check`. Leads for the `Content` rules, all warnings: wording that tells history, fenced code, and names in backticks that the code no longer has |
+| `migrate --dry-run`, `migrate` | First run only: single-file SDDs into folders, and references into the full form |
 
 ### After fix and check
 
@@ -188,7 +194,11 @@ node "${CLAUDE_SKILL_DIR}/scripts/sdd-check.js" <command>
 
 - **An abstract over 500 characters.** Shorten it.
 - **A reference to a section that does not exist.** Correct the reference, or add the missing heading. An anchor that exists only as a numbered list item, for example, needs a real heading.
+- **A label where a section number belongs.** Cite the section it means, or drop the reference.
+- **A line-number citation.** Cite the symbol instead.
 - **A section over the limit with no subsections.** Divide it into nested sections, then run `fix` again.
+
+`lint` is not a rule check. History wording is a phrase list, so it also catches some sentences about the present. Fenced code is often copied code, but not always. A name the code lacks may be stale, or may be a library's. Confirm each warning, and change only the text that is wrong.
 
 ### The Stop hook
 
