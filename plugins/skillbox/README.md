@@ -118,10 +118,10 @@ and a section file that fits back into its parent's is merged back, so the agent
 files instead of grepping a long one. References are ids, `SDD001§3.2`, never paths, so nothing
 breaks when files split or merge.
 
-The plugin's Stop hook, Claude Code only, checks the SDDs changed in a turn before the turn ends,
-and sends problems back to the agent. It does nothing in a repository whose config names no `paths.sddRoot`, and on
-first use the skill proposes the `CLAUDE.md` or `AGENTS.md` lines that make sessions read and
-update SDDs at all. [The skill's README](skills/to-sdd/README.md) has the format, the bar and the
+The plugin's Stop hook checks the SDDs changed in a turn before the turn ends, and sends problems
+back to the agent. The plugin sets it up in Claude Code; other agents can have it wired in by hand.
+It does nothing in a repository whose config names no `paths.sddRoot`, and on first use the skill
+proposes the `CLAUDE.md` or `AGENTS.md` lines that make sessions read and update SDDs at all. [The skill's README](skills/to-sdd/README.md) has the format, the bar and the
 script, which ships inside the skill folder.
 
 ## Configuration

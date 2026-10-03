@@ -1,0 +1,13 @@
+{
+  "name": "skillbox",
+  "private": true,
+  "description": "Dev scripts only — the plugins need no install. Tests use Node's built-in runner, no dependencies.",
+  "engines": {
+    "node": ">=21"
+  },
+  "scripts": {
+    "test": "node --test \"plugins/skillbox/scripts/test/*.test.js\"",
+    "test:fork": "node --test \"plugins/skillbox/scripts/test/{cli,fork-*}.test.js\"",
+    "test:sdd": "node --test \"plugins/skillbox/scripts/test/sdd-*.test.js\""
+  }
+}

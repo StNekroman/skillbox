@@ -12,7 +12,7 @@
 //   refs --changed | <file ...> the SDD sections that changed files, or the given files, cite
 //   next                        the id a new SDD takes
 //   hook                        the Stop hook: reads the hook input on stdin, checks the SDDs
-//                               changed since HEAD, exits 2 with the problems for the agent
+//                               changed since HEAD, prints a reply that sends the problems back
 //   --dry-run (fix, migrate) prints what would change and writes nothing.
 
 const fs = require('fs');
@@ -638,13 +638,23 @@ function readStdin() {
   }
 }
 
-// The Stop hook. Silent, exit 0, unless an SDD folder changed since HEAD breaks a rule; then the
-// problems go to stderr with exit 2, which sends them to the agent and keeps it working. It checks
-// only the changed docs and the references inside them — references from code are the skill's
-// job, not something to pay for at the end of every turn.
+// The Stop hook. Silent unless an SDD folder changed since HEAD breaks a rule; then it prints a
+// reply that sends the problems to the agent and keeps it working. It checks only the changed docs
+// and the references inside them — references from code are the skill's job, not something to pay
+// for at the end of every turn.
+//
+// Most agents share one end-of-turn hook shape: `cwd` and `stop_hook_active` on stdin, and
+// {"decision":"block","reason"} on stdout to send the turn back. Claude Code, Codex and Copilot CLI
+// take it on Stop (Copilot also on agentStop), Gemini CLI on AfterAgent, and Cursor for a hook in
+// Claude Code's format. Cursor's own `stop` hook differs: workspace_roots instead of cwd,
+// loop_count for the loop, followup_message for the reply. Exit 2 would not do: Copilot documents
+// only the JSON reply for a stop, and Cursor's own stop ignores it.
 function hook(input) {
-  if (input.stop_hook_active) return 0; // this turn was already sent back once; let it end
-  const root = findRoot(input.cwd || process.cwd());
+  const cursor = input.hook_event_name === 'stop';
+  // A turn already sent back once may end, and so may one Cursor reports as aborted.
+  if (cursor ? input.loop_count > 0 || ['aborted', 'error'].includes(input.status) : input.stop_hook_active) return 0;
+  const starts = cursor ? [...(input.workspace_roots || []), process.cwd()] : [input.cwd || process.cwd()];
+  const root = starts.map((dir) => findRoot(dir)).find(Boolean);
   if (!root) return 0;
   let cfg;
   try {
@@ -693,10 +703,9 @@ function hook(input) {
     else if (manual.some((x) => x.structural)) lines.push('', 'Repair by hand first:', ...byHand, '', 'Then run:', ...runFix);
     else lines.push('', 'Run first:', ...runFix, '', 'Then repair by hand:', ...byHand);
   }
-  // Claude Code shows the user any Stop block as "Stop hook error occurred", whether it comes as
-  // exit 2 or as a JSON decision; exit 2 is the simpler of the two.
-  process.stderr.write(`${lines.join('\n')}\n`);
-  return 2;
+  const reason = lines.join('\n');
+  process.stdout.write(`${JSON.stringify(cursor ? { followup_message: reason } : { decision: 'block', reason })}\n`);
+  return 0;
 }
 
 // ---------------------------------------------------------------- main
@@ -710,7 +719,7 @@ function main(argv = process.argv.slice(2)) {
   if (cmd === 'hook') {
     // Without input, readStdin would wait on the terminal forever.
     if (process.stdin.isTTY) {
-      fail('hook reads the Stop hook input as JSON on stdin: Claude Code runs it; to try it by hand, pipe {"cwd":"<repository>"} into it');
+      fail('hook reads the Stop hook input as JSON on stdin: the agent runs it; to try it by hand, pipe {"cwd":"<repository>"} into it');
     }
     process.exitCode = hook(readStdin());
     return;

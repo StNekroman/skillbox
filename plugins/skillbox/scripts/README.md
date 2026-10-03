@@ -53,11 +53,16 @@ The headless turn only ever carries the idle prompt. A directive never runs unat
 
 ## Tests
 
-No dependencies — Node's built-in runner. From the repository root:
+No dependencies — Node's built-in runner, 21 or later. From the repository root:
 
 ```bash
-node --test 'plugins/skillbox/scripts/test/*.test.js'
+npm test            # everything
+npm run test:fork   # fork-at, fork-tree and their CLI
+npm run test:sdd    # the SDD checker
 ```
+
+The root `package.json` holds only these scripts; nothing needs installing. Each runs
+`node --test` on a glob, which Node expands itself, so they behave the same in any shell.
 
 Every fork test builds synthetic transcripts in a throwaway `CLAUDE_CONFIG_DIR`, so none reads your real
 sessions. `cli.test.js` runs the scripts as the slash commands do, end to end, against
@@ -133,8 +138,17 @@ asks git which files changed since `HEAD` and checks only the SDD folders among 
 references inside those. It still parses every SDD under `paths.sddRoot` — numbering and references
 are validated against all of them — but reads no file outside it: the repository-wide reference
 scan is `check`'s job, run by the skill, not something to pay for at the end of every turn. It
-exits 2 — which sends its stderr to the agent — only on an error, and 0 whenever
-`stop_hook_active` says the turn was already sent back once.
+sends the turn back only on an error, and never when it was already sent back once:
+`stop_hook_active`, or Cursor's `loop_count`.
+
+**One reply for most agents.** The hook reads `cwd` and `stop_hook_active` on stdin. To send the
+turn back it prints `{"decision":"block","reason":…}` and exits 0. That is the end-of-turn shape
+Claude Code, Codex and Copilot CLI document on `Stop` (Copilot also on `agentStop`), and Gemini
+CLI on `AfterAgent`; Cursor accepts it from a hook in Claude Code's format. Cursor's own `stop`
+hook gets its own answer: the repository from `workspace_roots`, the reply as `followup_message`.
+The hook never exits 2: Copilot documents only the JSON reply for a stop, and Cursor's own `stop`
+ignores the exit code. The tests feed each documented input shape; only Claude Code runs it for
+real.
 
 ## Environment
 

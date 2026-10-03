@@ -88,10 +88,12 @@ class Transcript {
   }
 }
 
-// A throwaway CLAUDE_CONFIG_DIR. Removed when the test finishes.
+// A throwaway CLAUDE_CONFIG_DIR. Removed when the test finishes — with retries,
+// because a detached FORK_AT_TERMINAL window can outlive the test by a moment,
+// and Windows refuses to delete a directory a live process is standing in.
 function tempRoot(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'skillbox-test-'));
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }));
   return root;
 }
 
@@ -106,6 +108,18 @@ function writeTranscript(root, sessionId, transcript, project = 'd--proj') {
 function writeLedger(root, edges) {
   const lines = edges.map(([parent, child]) => JSON.stringify({ parent, child, cutUuid: id(1) }));
   fs.writeFileSync(path.join(root, 'fork-tree.jsonl'), lines.join('\n') + '\n');
+}
+
+// The environment for a script the tests run as a child process: the tests' own,
+// minus a debugger's hooks. VS Code's auto-attach sets both variables in its
+// terminals, and every node started under them prints "Debugger attached." to
+// stderr and lingers on exit — breaking assertions on stderr, and holding temp
+// directories open past the test.
+function scriptEnv() {
+  const env = { ...process.env };
+  delete env.NODE_OPTIONS;
+  delete env.VSCODE_INSPECTOR_OPTIONS;
+  return env;
 }
 
 // Sets environment variables for the duration of one test.
@@ -124,4 +138,4 @@ function withEnv(t, vars) {
   });
 }
 
-module.exports = { id, Transcript, tempRoot, writeTranscript, writeLedger, withEnv };
+module.exports = { id, Transcript, tempRoot, writeTranscript, writeLedger, scriptEnv, withEnv };

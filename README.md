@@ -67,9 +67,11 @@ claude --plugin-dir /path/to/your/clone/plugins/skillbox
 ### Other agents
 
 The four skills are plain `SKILL.md` folders and carry everything they need, so an agent that reads
-that format can use one copied into its skills directory. The commands and the Stop hook are
-Claude Code only: the fork commands drive Claude Code's own sessions, and the hook is a Claude Code
-plugin hook. Elsewhere `to-sdd` still runs its checks itself; only the end-of-turn check is
+that format can use one copied into its skills directory. The commands are Claude Code only: they
+drive Claude Code's own sessions. The plugin sets up the Stop hook only in Claude Code, but its
+script also speaks the end-of-turn hook formats of Codex, Copilot CLI, Gemini CLI and Cursor, so it
+can be wired into those by hand — [to-sdd's README](plugins/skillbox/skills/to-sdd/README.md#the-script-and-the-hook)
+says how. Without the hook `to-sdd` still runs its checks itself; only the end-of-turn check is
 missing. `jira-push-ticket` needs the Atlassian MCP server added to that agent by hand.
 
 ## Requirements

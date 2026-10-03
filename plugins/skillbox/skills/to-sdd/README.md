@@ -91,12 +91,17 @@ citation in an SDD is an error too. `migrate` writes the forms it can resolve in
 what is left after it is the work for the agent: `check` lists the reference errors, `lint` the
 content leads.
 
-The plugin also ships a **Stop hook**, Claude Code only, that runs the same rules at the end of
-every turn, on the SDD folders changed since `HEAD` only. It is silent when they pass; when they do
-not, it sends the problems back to the agent — the `fix` command to run, and what to repair by
-hand — and the turn continues. It never rewrites anything itself, and it lets a turn end once it
-has been sent back once. In a repository with no `paths.sddRoot` it does nothing. Where the skill
-runs without the plugin, there is no hook: the skill's own `fix` and `check` are the only check.
+The plugin also ships a **Stop hook** that runs the same rules at the end of every turn, on the SDD
+folders changed since `HEAD` only. It is silent when they pass; when they do not, it sends the
+problems back to the agent — the `fix` command to run, and what to repair by hand — and the turn
+continues. It never rewrites anything itself, and it lets a turn end once it has been sent back
+once. In a repository with no `paths.sddRoot` it does nothing.
+
+The plugin sets the hook up in Claude Code. The script answers in the end-of-turn hook format of
+Codex, Copilot CLI and Gemini CLI too, and in both of Cursor's, so it can be wired into those by
+hand: `node <this folder>/scripts/sdd-check.js hook` on their `Stop`, `agentStop`, `AfterAgent` or
+`stop` event. That follows their documentation; only Claude Code has been tried. Where no hook is
+set up, the skill's own `fix` and `check` are the only check.
 
 ## What it needs
 

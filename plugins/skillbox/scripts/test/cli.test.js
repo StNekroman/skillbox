@@ -11,7 +11,7 @@ const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
 
-const { Transcript, tempRoot, writeTranscript, writeLedger } = require('./helpers');
+const { Transcript, tempRoot, writeTranscript, writeLedger, scriptEnv } = require('./helpers');
 
 const SCRIPTS = path.join(__dirname, '..');
 const FAKE = path.join(__dirname, 'fixtures', 'fake-claude.js');
@@ -19,7 +19,7 @@ const SID = 'abcdef12-0000-4000-8000-000000000001';
 const DIRECTIVE = "don't touch files & wait";
 
 function run(script, args, env, cwd = os.tmpdir()) {
-  const clean = { ...process.env };
+  const clean = scriptEnv();
   for (const k of Object.keys(clean)) if (k.startsWith('CLAUDE') || k.startsWith('FORK_AT') || k.startsWith('FAKE_')) delete clean[k];
   return spawnSync(process.execPath, [path.join(SCRIPTS, script), ...args], {
     encoding: 'utf8',

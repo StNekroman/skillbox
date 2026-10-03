@@ -9,7 +9,7 @@ const { spawnSync } = require('child_process');
 
 const D = require('../../skills/to-sdd/scripts/lib/sdd-doc');
 const { loadConfig, loadDocs, citingFiles } = require('../../skills/to-sdd/scripts/sdd-check');
-const { tempRoot } = require('./helpers');
+const { tempRoot, scriptEnv } = require('./helpers');
 const { body, section, readme, text } = require('./sdd-helpers');
 
 const SCRIPT = path.join(__dirname, '..', '..', 'skills', 'to-sdd', 'scripts', 'sdd-check.js');
@@ -63,11 +63,26 @@ function folderDoc(dir, readmeLines, maxLines = CONFIG.sdd.maxLines) {
 const mailDoc = () => folderDoc('docs/sdd/SDD001-mail', readme('SDD001', 'Mail', [...section('1', 'Overview'), ...section('2', 'Delivery')]));
 
 function run(cwd, args, input) {
-  return spawnSync(process.execPath, [SCRIPT, ...args], { cwd, encoding: 'utf8', input });
+  return spawnSync(process.execPath, [SCRIPT, ...args], { cwd, encoding: 'utf8', input, env: scriptEnv() });
 }
 
-const hook = (root, fields = {}) =>
-  run(root, ['hook'], JSON.stringify({ hook_event_name: 'Stop', stop_hook_active: false, cwd: root, ...fields }));
+// The hook's reply to the given input, or null when it lets the turn end. Either way it exits 0 and
+// writes nothing to stderr.
+function runHook(cwd, input) {
+  const r = run(cwd, ['hook'], JSON.stringify(input));
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stderr, '');
+  return r.stdout ? JSON.parse(r.stdout) : null;
+}
+
+// The hook as Claude Code runs it: the reason it sends the turn back with, or null.
+function hook(root, fields = {}) {
+  const reply = runHook(root, { hook_event_name: 'Stop', stop_hook_active: false, cwd: root, ...fields });
+  if (!reply) return null;
+  assert.deepEqual(Object.keys(reply), ['decision', 'reason']);
+  assert.equal(reply.decision, 'block');
+  return reply.reason;
+}
 
 describe('check', () => {
   test('a repository whose SDDs and references are sound passes', (t) => {
@@ -334,81 +349,70 @@ describe('lint', () => {
 describe('hook', needsGit, () => {
   test('is silent in a repository without the plugin config', (t) => {
     const root = repo(t, { 'a.md': ['x'] }, { config: null });
-    const r = hook(root);
-    assert.equal(r.status, 0);
-    assert.equal(r.stderr, '');
+    assert.equal(hook(root), null);
   });
 
   test('is silent when the config names no SDD directory', (t) => {
-    const r = hook(repo(t, mailDoc(), { config: { paths: { draftRoot: 'docs/tickets' } } }));
-    assert.equal(r.status, 0);
-    assert.equal(r.stderr, '');
+    assert.equal(hook(repo(t, mailDoc(), { config: { paths: { draftRoot: 'docs/tickets' } } })), null);
   });
 
   test('checks only SDDs changed since HEAD, so an old problem does not stop every turn', (t) => {
     const root = repo(t, { 'docs/sdd/SDD001-mail/README.md': readme('SDD001', 'Mail', section('1', 'No index yet')) });
     write(root, { 'src/a.ts': ['export {};'] });
-    const r = hook(root);
-    assert.equal(r.status, 0, r.stderr);
+    assert.equal(hook(root), null);
   });
 
-  test('a changed SDD that breaks a rule is sent back with exit 2, the manual repair first', (t) => {
+  test('a changed SDD that breaks a rule is sent back with a block decision, the manual repair first', (t) => {
     const root = repo(t, mailDoc());
     fs.appendFileSync(path.join(root, 'docs/sdd/SDD001-mail/README.md'), text(section('4.1', 'Orphan')));
-    const r = hook(root);
-    assert.equal(r.status, 2);
-    assert.match(r.stderr, /^SDD docs changed in this task break the SDD rules\. Repair them before you finish\.$/m);
-    assert.match(r.stderr, /Repair by hand first:\n {2}docs\/sdd\/SDD001-mail\/README\.md:\d+: §4\.1 has no parent: there is no §4\n/);
-    assert.match(r.stderr, /Then run:\n {2}node ".+sdd-check\.js" fix SDD001\n/);
-    assert.match(r.stderr, /README\.md:\d+: the index is out of date/);
+    const reason = hook(root);
+    assert.match(reason, /^SDD docs changed in this task break the SDD rules\. Repair them before you finish\.$/m);
+    assert.match(reason, /Repair by hand first:\n {2}docs\/sdd\/SDD001-mail\/README\.md:\d+: §4\.1 has no parent: there is no §4\n/);
+    assert.match(reason, /Then run:\n {2}node ".+sdd-check\.js" fix SDD001\n/);
+    assert.match(reason, /README\.md:\d+: the index is out of date/);
   });
 
   test('a problem fix can repair asks only for fix, and after fix the turn may end', (t) => {
     const root = repo(t, mailDoc());
     const entry = path.join(root, 'docs/sdd/SDD001-mail/README.md');
     fs.writeFileSync(entry, read(root, 'docs/sdd/SDD001-mail/README.md').replace('## §2 Delivery', '## §2 Delivery and bounces'));
-    const r = hook(root);
-    assert.equal(r.status, 2);
-    assert.match(r.stderr, /\nRun:\n {2}node ".+sdd-check\.js" fix SDD001\n/);
-    assert.doesNotMatch(r.stderr, /by hand/);
+    const reason = hook(root);
+    assert.match(reason, /\nRun:\n {2}node ".+sdd-check\.js" fix SDD001\n/);
+    assert.doesNotMatch(reason, /by hand/);
 
     assert.equal(run(root, ['fix', 'SDD001']).status, 0);
-    assert.equal(hook(root).status, 0);
+    assert.equal(hook(root), null);
   });
 
   test('once the turn has been sent back, it may end: stop_hook_active', (t) => {
     const root = repo(t, mailDoc());
     fs.appendFileSync(path.join(root, 'docs/sdd/SDD001-mail/README.md'), text(section('4.1', 'Orphan')));
-    const r = hook(root, { stop_hook_active: true });
-    assert.equal(r.status, 0);
-    assert.equal(r.stderr, '');
+    assert.equal(hook(root, { stop_hook_active: true }), null);
   });
 
   test('a single-file SDD is not checked until it is migrated', (t) => {
     const root = repo(t, { 'docs/sdd/SDD001-mail.md': readme('SDD001', 'Mail', section('1', 'One')) });
     fs.appendFileSync(path.join(root, 'docs/sdd/SDD001-mail.md'), text(section('4.1', 'Orphan')));
-    assert.equal(hook(root).status, 0);
+    assert.equal(hook(root), null);
   });
 
   test('a changed SDD with no limit configured asks for the init', (t) => {
     const root = repo(t, mailDoc(), { config: { paths: { sddRoot: 'docs/sdd' } } });
     fs.appendFileSync(path.join(root, 'docs/sdd/SDD001-mail/README.md'), 'More text.\n');
-    const r = hook(root);
-    assert.equal(r.status, 2);
-    assert.match(r.stderr, /has no valid sdd\.maxLines/);
+    assert.match(hook(root), /has no valid sdd\.maxLines/);
   });
 
   test('finds the repository from a subdirectory, where a session may have started', (t) => {
     const root = repo(t, { ...mailDoc(), 'src/a.ts': ['export {};'] });
     fs.appendFileSync(path.join(root, 'docs/sdd/SDD001-mail/README.md'), text(section('4.1', 'Orphan')));
-    assert.equal(hook(root, { cwd: path.join(root, 'src') }).status, 2);
+    assert.ok(hook(root, { cwd: path.join(root, 'src') }));
   });
 
   test('a sddRoot spelled ./docs/sdd or docs\\sdd\\ still names the folders git reports', (t) => {
     for (const sddRoot of ['./docs/sdd', 'docs\\sdd\\']) {
       const root = repo(t, mailDoc(), { config: { ...CONFIG, paths: { sddRoot } } });
       fs.appendFileSync(path.join(root, 'docs/sdd/SDD001-mail/README.md'), text(section('4.1', 'Orphan')));
-      assert.equal(hook(root).status, 2, sddRoot);
+      assert.ok(hook(root), sddRoot);
     }
   });
 
@@ -422,7 +426,36 @@ describe('hook', needsGit, () => {
       t.skip(`cannot make a symlink here: ${e.message}`);
       return;
     }
-    assert.equal(hook(link, { cwd: link }).status, 2);
+    assert.ok(hook(link, { cwd: link }));
+  });
+
+  test('gives Copilot CLI and Gemini CLI the same block decision, whatever they call the event', (t) => {
+    const root = repo(t, mailDoc());
+    fs.appendFileSync(path.join(root, 'docs/sdd/SDD001-mail/README.md'), text(section('4.1', 'Orphan')));
+    const inputs = [
+      { sessionId: 's1', cwd: root, stopReason: 'end_turn', stop_hook_active: false }, // Copilot's agentStop
+      { hook_event_name: 'AfterAgent', cwd: root, prompt_response: 'Done.', stop_hook_active: false }, // Gemini
+    ];
+    for (const input of inputs) {
+      const reply = runHook(root, input);
+      assert.equal(reply.decision, 'block', JSON.stringify(input));
+      assert.match(reply.reason, /break the SDD rules/);
+      assert.equal(runHook(root, { ...input, stop_hook_active: true }), null);
+    }
+  });
+
+  test("Cursor's own stop hook: the repository from workspace_roots, the reply as a follow-up, sent once", (t) => {
+    const root = repo(t, mailDoc());
+    fs.appendFileSync(path.join(root, 'docs/sdd/SDD001-mail/README.md'), text(section('4.1', 'Orphan')));
+    // Run from a directory outside the repository: only workspace_roots leads to it.
+    const elsewhere = tempRoot(t);
+    const input = { hook_event_name: 'stop', status: 'completed', loop_count: 0, workspace_roots: [root] };
+    const reply = runHook(elsewhere, input);
+    assert.deepEqual(Object.keys(reply), ['followup_message']);
+    assert.match(reply.followup_message, /break the SDD rules/);
+    assert.equal(runHook(elsewhere, { ...input, loop_count: 1 }), null);
+    assert.equal(runHook(elsewhere, { ...input, status: 'aborted' }), null);
+    assert.equal(runHook(root, { ...input, workspace_roots: [] }).followup_message, reply.followup_message);
   });
 });
 

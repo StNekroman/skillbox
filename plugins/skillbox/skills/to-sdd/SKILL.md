@@ -2,7 +2,7 @@
 name: to-sdd
 description: Keep the repository’s SDDs — the agent-written memory of how each feature area works — true after a code change. Corrects the sections a change made wrong, adds sections for new architecture, creates an SDD for an area none covers, and keeps each file under the size limit. Writes nothing when the change is below the bar. Use at the end of a task that changed code, or when asked to create, update or migrate SDDs; do not use for ADRs, tickets or code comments.
 metadata:
-  prompt-version: "2026-10-03.1"
+  prompt-version: "2026-10-03.2"
 ---
 
 # Keep the SDDs true
@@ -169,7 +169,7 @@ After the abstract, the README may hold a few short lines, such as a note on how
 
 ## The script
 
-It is `scripts/sdd-check.js` in this skill's folder. Run it from the repository root. In Claude Code, the plugin's Stop hook runs it too.
+It is `scripts/sdd-check.js` in this skill's folder. Run it from the repository root. The Stop hook runs it too, where one is set up.
 
 ```bash
 node "${CLAUDE_SKILL_DIR}/scripts/sdd-check.js" <command>
@@ -202,7 +202,7 @@ node "${CLAUDE_SKILL_DIR}/scripts/sdd-check.js" <command>
 
 ### The Stop hook
 
-The hook exists only where this skill is installed as part of the Claude Code plugin. There it runs the same rules at the end of every turn, on the SDDs changed since `HEAD`. When it sends the turn back, do what it says: run the `fix` command it prints, or repair the lines it lists.
+The hook runs only where it is set up: the Claude Code plugin sets it up, and another agent needs it wired in by hand. Where it is set up, it runs the same rules at the end of every turn, on the SDDs changed since `HEAD`. When it sends the turn back, do what it says: run the `fix` command it prints, or repair the lines it lists.
 
 Without the hook, nothing checks the SDDs after you. Step 8 is then the only check, so never skip it.
 
