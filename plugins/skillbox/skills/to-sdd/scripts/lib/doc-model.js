@@ -865,6 +865,37 @@ function codeNames(m) {
   return out;
 }
 
+// A URL scheme — http:, mailto:, a drive letter — rather than a path.
+const SCHEME_RE = /^[A-Za-z][A-Za-z0-9+.-]*:/;
+
+// The relative links in one doc's text: { file, i, target }, target as written. Left out: a URL,
+// an in-page #anchor, a protocol-relative //host, and a link into a doc, which check reports as a
+// reference by path. Code spans are blanked first, so a link written inside one is text. An
+// image's link is a link too.
+function docLinks(m) {
+  const out = [];
+  for (const f of orderFiles(m.files)) {
+    for (const { i, line } of textLines(f)) {
+      const text = line.replace(INLINE_CODE_RE, (s) => ' '.repeat(s.length));
+      for (const l of text.matchAll(LINK_RE)) {
+        const target = l[2];
+        if (SCHEME_RE.test(target) || target.startsWith('#') || target.startsWith('//') || linkedDoc(target)) continue;
+        out.push({ file: f.name, i, target });
+      }
+    }
+  }
+  return out;
+}
+
+// The section a line of one of a doc's files belongs to: the last section heading at or above it,
+// else the section the file holds; null for README.md's text above its first section.
+function sectionAt(m, fileName, i) {
+  const f = m.files.get(fileName);
+  if (!f) return null;
+  const h = f.headings.filter((x) => x.section && x.i <= i).pop();
+  return h ? h.section.anchor : f.anchor || null;
+}
+
 // ---------------------------------------------------------------- references
 
 // A link target's path segments, without its fragment or query.
@@ -1148,6 +1179,8 @@ module.exports = {
   lintDoc,
   codeName,
   codeNames,
+  docLinks,
+  sectionAt,
   findRefs,
   refsInFile,
   validateRef,

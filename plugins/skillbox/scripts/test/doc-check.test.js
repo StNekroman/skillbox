@@ -717,3 +717,142 @@ describe('knowledge-base pages (KBDOC)', () => {
     });
   });
 });
+
+describe('links', () => {
+  const BOTH = { version: 1, paths: { sddRoot: 'docs/sdd', kbRoot: 'docs/kb' }, sdd: { maxLines: 200 }, kb: { maxLines: 200 } };
+  const lintMessages = (stdout) =>
+    stdout
+      .split('\n')
+      .filter((l) => l.startsWith('docs/'))
+      .map((l) => l.replace(/^\S+ warning: /, ''));
+
+  test('lint reports relative links that point at nothing, in every type', (t) => {
+    const sdd = folderDoc(
+      'docs/sdd/SDD001-mail',
+      readme('SDD001', 'Mail', [
+        ...section('1', 'Sending', [
+          'Kept: [mail](../../../src/mail.ts), ![logo](../../../img/logo.png), [root](/src/mail.ts), [dir](../../../src/).',
+          'Gone: [old](../../../src/gone.ts), [out](../../../../outside.md), [case](../../../SRC/mail.ts).',
+          'Skipped: [web](https://example.com), [top](#top), [mail](mailto:a@b.c), `[code](nope.md)`, [rates](../SDD002-rates/README.md).',
+          '```text',
+          '[fenced](nope.md)',
+          '```',
+        ]),
+      ]),
+      200,
+    );
+    const kb = folderDoc(
+      'docs/kb/KBDOC001-merchant-center',
+      readme('KBDOC001', 'Merchant Center', section('1', 'Spec', ['[spec](../attachments/spec.pdf) and [draft](../attachments/none.pdf).'])),
+      200,
+    );
+    const root = repo(t, { ...sdd, ...kb, 'src/mail.ts': ['export {};'], 'img/logo.png': 'PNG', 'docs/kb/attachments/spec.pdf': 'PDF' }, { config: BOTH });
+    const r = run(root, ['lint']);
+    assert.equal(r.status, 0, r.stderr);
+    assert.deepEqual(lintMessages(r.stdout), [
+      'the link to ../attachments/none.pdf: no docs/kb/attachments/none.pdf in the repository',
+      'the link to ../../../src/gone.ts: no src/gone.ts in the repository',
+      'the link to ../../../../outside.md: points outside the repository',
+      'the link to ../../../SRC/mail.ts: no SRC/mail.ts in the repository',
+    ]);
+  });
+
+  describe('refs', needsGit, () => {
+    const page = () =>
+      folderDoc(
+        'docs/kb/KBDOC001-merchant-center',
+        readme('KBDOC001', 'Merchant Center', [
+          ...section('1', 'Feed', ['Our feed is [the feed](../../../src/feed.ts), per [the spec](../attachments/spec.pdf).']),
+          ...section('2', 'Build', ['Built by `src/build/run.ts`, also written `build/run.ts`.']),
+          ...section('2.1', 'Tools', ['Scripts in `tools/`.']),
+          ...section('3', 'Legacy', ['Once `src/old.ts`.']),
+        ]),
+        200,
+      );
+    const code = {
+      'src/feed.ts': ['export {};'],
+      'src/build/run.ts': ['export {};'],
+      'src/old.ts': ['export {};'],
+      'tools/x.sh': ['echo'],
+      'docs/kb/attachments/spec.pdf': 'PDF',
+      'src/unrelated.ts': ['export {};'],
+    };
+
+    test('--changed lists the KB sections that link a changed file, by link, by path, deleted files and attachments too', (t) => {
+      const files = page();
+      const sdd = folderDoc('docs/sdd/SDD001-mail', readme('SDD001', 'Mail', section('1', 'One', ['Feed: [feed](../../../src/feed.ts).'])), 200);
+      const root = repo(t, { ...files, ...sdd, ...code }, { config: BOTH });
+      write(root, { 'src/feed.ts': ['// KBDOC001§1', 'export {};'], 'src/build/run.ts': ['export const x = 1;'], 'tools/x.sh': ['echo 2'], 'docs/kb/attachments/spec.pdf': 'PDF2' });
+      fs.rmSync(path.join(root, 'src/old.ts'));
+      const entry = 'docs/kb/KBDOC001-merchant-center/README.md';
+      const lineOf = (text) => files[entry].findIndex((l) => l.includes(text)) + 1;
+
+      const r = run(root, ['refs', '--changed']);
+      assert.equal(r.status, 0, r.stderr);
+      assert.equal(
+        r.stdout,
+        [
+          'KBDOC001§1  Feed',
+          `  in ${entry}:${lineOf('## §1 Feed')}`,
+          '  cited by src/feed.ts:1',
+          `  links src/feed.ts (${entry}:${lineOf('Our feed')})`,
+          `  links docs/kb/attachments/spec.pdf (${entry}:${lineOf('Our feed')})`,
+          'KBDOC001§2  Build',
+          `  in ${entry}:${lineOf('## §2 Build')}`,
+          `  links src/build/run.ts (${entry}:${lineOf('Built by')})`,
+          'KBDOC001§2.1  Tools',
+          `  in ${entry}:${lineOf('### §2.1 Tools')}`,
+          `  links tools/x.sh (${entry}:${lineOf('Scripts in')})`,
+          'KBDOC001§3  Legacy',
+          `  in ${entry}:${lineOf('## §3 Legacy')}`,
+          `  links src/old.ts (${entry}:${lineOf('Once')})`,
+          '',
+        ].join('\n'),
+      );
+    });
+
+    test('--changed follows a rename: a page that links the old path is reported', (t) => {
+      const root = repo(t, { ...page(), ...code }, { config: BOTH });
+      git(root, ['mv', 'src/old.ts', 'src/new-name.ts']);
+      const r = run(root, ['refs', '--changed']);
+      assert.match(r.stdout, /^KBDOC001§3 {2}Legacy\n.*\n {2}links src\/old\.ts \(/m);
+    });
+
+    test('--to lists everything that cites a section, its subsections and other spellings included', (t) => {
+      const sdd = folderDoc(
+        'docs/sdd/SDD001-mail',
+        readme('SDD001', 'Mail', [...section('1', 'Overview', ['See §2.1.']), ...section('2', 'Delivery', ['Sends.']), ...section('2.1', 'Retries', ['Retries.'])]),
+        200,
+      );
+      const kb = folderDoc('docs/kb/KBDOC001-merchant-center', readme('KBDOC001', 'Merchant Center', section('1', 'Feed', ['Uses SDD001§2.'])), 200);
+      const root = repo(t, { ...sdd, ...kb, 'src/a.ts': ['// SDD001§2 and SDD001§2.1', '// SDD1§2', '// SDD001 and SDD001§1'] }, { config: BOTH });
+      const lineOf = (files, text) => files.findIndex((l) => l.includes(text)) + 1;
+      const sddLines = sdd['docs/sdd/SDD001-mail/README.md'];
+      const kbLines = kb['docs/kb/KBDOC001-merchant-center/README.md'];
+
+      const r = run(root, ['refs', '--to', 'SDD001§2']);
+      assert.equal(r.status, 0, r.stderr);
+      assert.equal(
+        r.stdout,
+        [
+          'SDD001§2  Delivery',
+          `  in docs/sdd/SDD001-mail/README.md:${lineOf(sddLines, '## §2 Delivery')}`,
+          `  cited by docs/kb/KBDOC001-merchant-center/README.md:${lineOf(kbLines, 'Uses SDD001§2')}`,
+          `  cited by docs/sdd/SDD001-mail/README.md:${lineOf(sddLines, 'See §2.1')} (as §2.1)`,
+          '  cited by src/a.ts:1',
+          '  cited by src/a.ts:1 (§2.1)',
+          '  cited by src/a.ts:2 (as SDD1§2)',
+          '',
+        ].join('\n'),
+      );
+      assert.equal(run(root, ['refs', '--to', 'SDD001:2']).stdout, r.stdout);
+      assert.match(run(root, ['refs', '--to', 'SDD001']).stdout, /^ {2}cited by src\/a\.ts:3$/m);
+
+      const none = run(root, ['refs', '--to', 'KBDOC009']);
+      assert.equal(none.stdout, 'KBDOC009\n  does not exist\n  Nothing cites KBDOC009.\n');
+      const bad = run(root, ['refs', '--to', 'SDD001', 'KBDOC001']);
+      assert.equal(bad.status, 1);
+      assert.match(bad.stderr, /refs --to takes one id/);
+    });
+  });
+});

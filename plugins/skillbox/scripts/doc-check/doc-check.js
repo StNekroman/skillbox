@@ -12,8 +12,11 @@
 //   migrate                     move single-file SDDs into folders, turn links to them into ids,
 //                               expand short-form references across the repository; then fix
 //   lint [ID ...]               content leads for the agent, all warnings: wording that tells
-//                               history, copied code, names in backticks the code no longer has
-//   refs --changed | <file ...> the sections that changed files, or the given files, cite
+//                               history, copied code, names in backticks the code no longer has,
+//                               links that point at nothing
+//   refs --changed | <file ...> the sections that changed files, or the given files, cite — and
+//                               the KB sections that link them
+//   refs --to ID[§x.y]          everything that cites that doc or section
 //   next [PREFIX]               the id a new doc takes
 //   hook                        the Stop hook: reads the hook input on stdin, checks the docs
 //                               changed since HEAD, prints a reply that sends the problems back
@@ -146,8 +149,9 @@ function realpath(p) {
   }
 }
 
-// Files changed since HEAD, untracked included, relative to root. null without git.
-function changedFiles(root) {
+// Files changed since HEAD, untracked included, relative to root. null without git. withOld adds
+// the path a renamed file had, which what still names the old path may point at.
+function changedFiles(root, { withOld = false } = {}) {
   const top = git(root, ['rev-parse', '--show-toplevel']);
   const out = git(root, ['status', '--porcelain', '-z', '--untracked-files=all']);
   if (top === null || out === null) return null;
@@ -158,7 +162,10 @@ function changedFiles(root) {
     if (entry.length < 4) continue;
     files.push(entry.slice(3));
     // A rename or copy, in the index (R ) or the worktree ( R), is followed by its old path.
-    if (/[RC]/.test(entry.slice(0, 2))) i++;
+    if (/[RC]/.test(entry.slice(0, 2))) {
+      i++;
+      if (withOld && /R/.test(entry.slice(0, 2)) && parts[i]) files.push(parts[i]);
+    }
   }
   // git reports the top level with symlinks resolved; root, from the hook's cwd, may not be.
   const base = realpath(root);
@@ -528,10 +535,12 @@ function cmdMigrate(cfg, dryRun) {
 const DOC_FILE_RE = /\.(?:md|mdx|markdown|txt|rst|adoc)$/i;
 const MIGRATION_RE = /(?:^|\/)(?:migrations|migrate)\//i;
 
-// Whether a path the SDD names is one of the repository's files. A path from the repository root
-// must be exact. A shorter one, like orders/orders.service.ts, may skip directories, so long as the
-// file name matches and the directories it names come in order.
+// Which of the repository's files a path a doc names may be. A path from the repository root must
+// be exact. A shorter one, like orders/orders.service.ts, may skip directories, so long as the file
+// name matches and the directories it names come in order. A link, resolved from the file it sits
+// in, is exact: a file, or a directory holding one.
 function pathFinder(files) {
+  const all = new Set(files);
   const top = new Set(files.map((f) => f.split('/')[0]));
   const byBase = new Map();
   for (const f of files) {
@@ -546,26 +555,56 @@ function pathFinder(files) {
     return k === dirs.length;
   };
   const segments = new Set(files.flatMap((f) => f.split('/')));
+  const pathFiles = (p) => {
+    const parts = p.split('/');
+    const same = byBase.get(parts[parts.length - 1]) || [];
+    return top.has(parts[0]) ? same.filter((f) => f === p) : same.filter((f) => inOrder(parts.slice(0, -1), f));
+  };
+  const dirFiles = (p) => files.filter((f) => f.startsWith(`${p}/`) || f.includes(`/${p}/`));
+  const linkFiles = (p) => (!p ? files : all.has(p) ? [p] : files.filter((f) => f.startsWith(`${p}/`)));
   return {
-    path: (p) => {
-      const parts = p.split('/');
-      const same = byBase.get(parts[parts.length - 1]) || [];
-      return top.has(parts[0]) ? same.includes(p) : same.some((f) => inOrder(parts.slice(0, -1), f));
-    },
-    dir: (p) => files.some((f) => f.startsWith(`${p}/`) || f.includes(`/${p}/`)),
+    path: (p) => pathFiles(p).length > 0,
+    dir: (p) => dirFiles(p).length > 0,
     // A directory may carry a file's name too: app/sitemap.xml/route.ts serves sitemap.xml.
     file: (p) => segments.has(p),
+    link: (p) => linkFiles(p).length > 0,
+    // The files each would name, for matching against a list of changed ones.
+    pathFiles,
+    dirFiles,
+    linkFiles,
   };
 }
+
+// Where a relative link in one of a doc's files points, as a path from the repository root: the
+// fragment and query dropped, %-escapes decoded, a leading / taken from the root, the way a
+// repository host reads it. null for an empty target.
+function linkTarget(cfg, doc, target) {
+  let t = target.split('#')[0].split('?')[0];
+  try {
+    t = decodeURIComponent(t);
+  } catch {
+    // Left as written: a lone % is a character.
+  }
+  if (!t) return null;
+  const from = doc.kind === 'folder' ? doc.abs : path.dirname(doc.abs);
+  return rel(cfg.root, t.startsWith('/') ? path.join(cfg.root, t) : path.resolve(from, t));
+}
+
+// A doc's relative links, as names lint and refs look up: { file, i, token, kind: 'link', probe }.
+const linkNames = (cfg, doc) =>
+  D.docLinks(doc.model)
+    .map((l) => ({ file: l.file, i: l.i, token: l.target, kind: 'link', probe: linkTarget(cfg, doc, l.target) }))
+    .filter((n) => n.probe !== null);
 
 // Whether a repository path lies under a configured doc root. A root that is the repository
 // itself holds everything, so it marks nothing: what is a doc there is told by loadDocs.
 const inDocRoot = (cfg, p) => cfg.kinds.some((k) => k.rootRel && (p === k.rootRel || p.startsWith(`${k.rootRel}/`)));
 
-// What lint says about the names in backticks the code no longer has: { ...name, why }. A path is
-// looked up in the repository's file list, minus what git ignores, like build output. An
-// identifier is looked up among the words of every text file but the doc roots' and the docs,
-// read once for all the names.
+// What lint says about the names in backticks the code no longer has, and the links that point at
+// nothing: { ...name, why }. A path or a link is looked up in the repository's file list, minus
+// what git ignores, like build output; the match is exact in case, as it is wherever the
+// repository is checked out. An identifier is looked up among the words of every text file but
+// the doc roots' and the docs, read once for all the names.
 function missingNames(cfg, names) {
   const files = repoFiles(cfg.root);
   const has = pathFinder(files);
@@ -579,12 +618,17 @@ function missingNames(cfg, names) {
       if (text) for (const m of text.matchAll(/[A-Za-z_]\w*/g)) into.add(m[0]);
     }
   }
-  const absent = [...new Set(names.filter((n) => n.kind !== 'name' && !has[n.kind](n.probe)).map((n) => n.probe))];
+  const outside = (n) => n.kind === 'link' && (n.probe === '..' || n.probe.startsWith('../'));
+  const absent = [...new Set(names.filter((n) => n.kind !== 'name' && !outside(n) && !has[n.kind](n.probe)).map((n) => n.probe))];
   const listed = absent.length ? git(cfg.root, ['check-ignore', '--stdin', '--no-index'], [0, 1], absent.join('\n')) : '';
   const ignored = new Set((listed || '').split(/\r?\n/).filter(Boolean));
   const out = [];
   for (const n of names) {
-    if (n.kind !== 'name') {
+    if (outside(n)) {
+      out.push({ ...n, why: 'points outside the repository' });
+    } else if (n.kind === 'link') {
+      if (absent.includes(n.probe) && !ignored.has(n.probe)) out.push({ ...n, why: `no ${n.probe} in the repository` });
+    } else if (n.kind !== 'name') {
       if (absent.includes(n.probe) && !ignored.has(n.probe)) out.push({ ...n, why: `no such ${n.kind === 'dir' ? 'directory' : 'file'} in the repository` });
     } else if (!code.has(n.probe)) {
       out.push({ ...n, why: migrations.has(n.probe) ? `${n.probe} is only in migrations: check whether one drops it` : `no ${n.probe} in the code` });
@@ -593,8 +637,9 @@ function missingNames(cfg, names) {
   return out;
 }
 
-// Leads for a content pass: what lintDoc finds, and the names in backticks the code no longer
-// has. All warnings, since each needs a reading to confirm; the exit status is 0.
+// Leads for a content pass: what lintDoc finds, the names in backticks the code no longer has,
+// and the links that point at nothing. All warnings, since each needs a reading to confirm; the
+// exit status is 0.
 function cmdLint(cfg, args) {
   requireRoots(cfg);
   const docs = loadDocs(cfg);
@@ -605,12 +650,11 @@ function cmdLint(cfg, args) {
     for (const x of D.lintDoc(d.model, d.type.lint)) issues.push({ path: fileOf(d, x.file), line: x.i + 1, level: 'warning', message: x.message });
   }
   const names = mine.flatMap((d) =>
-    D.codeNames(d.model)
-      .filter((n) => d.type.lint.names.includes(n.kind))
-      .map((n) => ({ ...n, path: fileOf(d, n.file) })),
+    [...D.codeNames(d.model).filter((n) => d.type.lint.names.includes(n.kind)), ...linkNames(cfg, d)].map((n) => ({ ...n, path: fileOf(d, n.file) })),
   );
   for (const n of missingNames(cfg, names)) {
-    issues.push({ path: n.path, line: n.i + 1, level: 'warning', message: `\`${n.token}\`: ${n.why}` });
+    const what = n.kind === 'link' ? `the link to ${n.token}` : `\`${n.token}\``;
+    issues.push({ path: n.path, line: n.i + 1, level: 'warning', message: `${what}: ${n.why}` });
   }
   issues.sort((a, b) => a.path.localeCompare(b.path, 'en') || a.line - b.line);
   for (const x of issues) console.log(formatIssue(x));
@@ -622,39 +666,81 @@ function cmdLint(cfg, args) {
   return 0;
 }
 
+// The section or doc a listing is about, its title, and where it lives — or why it cannot say.
+function describeTarget(cfg, ids, { id, prefix, num, anchor, tag }) {
+  const key = `${id}${anchor || tag ? `§${anchor || tag}` : ''}`;
+  const doc = (ids.get(id) || [])[0];
+  const s = doc && anchor && doc.model.sections.get(anchor);
+  const title = s ? s.title : doc && !anchor && !tag ? (doc.model.h1 ? doc.model.h1.text : '') : '';
+  console.log(`${key}${title ? `  ${title}` : ''}`);
+  if (!kindOf(cfg, prefix)) console.log(`  not checked: ${uncheckedWhy(prefix)}`);
+  else if (!doc) console.log('  does not exist');
+  else if (tag) console.log(`  ${D.validateRef({ kind: 'full', prefix, num, tag }, ids).message}`);
+  else if (anchor && !s) console.log(`  not found in ${doc.rel}`);
+  else console.log(`  in ${fileOf(doc, s ? s.file : D.README)}${s ? `:${s.i + 1}` : ''}`);
+}
+
 // The sections the given files cite, each with where it lives and who cites it. Files under the
 // doc roots are skipped: this is for finding which docs a code change may have made wrong. A
 // citation in a non-canonical spelling (SDD1§2) is listed under the id it means, with a note,
-// since the doc it names is affected all the same.
+// since the doc it names is affected all the same. For a type with linkBack, the sections that
+// link one of the files — by a markdown link, or by a path in backticks — are listed too: a
+// knowledge-base page may describe our code without the code citing it.
 function cmdRefs(cfg, args) {
   requireRoots(cfg);
+  if (args[0] === '--to') return cmdRefsTo(cfg, args.slice(1));
   let files;
   if (args.length === 1 && args[0] === '--changed') {
-    files = changedFiles(cfg.root);
+    files = changedFiles(cfg.root, { withOld: true });
     if (files === null) fail('--changed needs git');
   } else if (args.length) {
     files = args.map((a) => rel(cfg.root, path.resolve(a)));
   } else {
-    fail('refs needs --changed or a list of files');
+    fail('refs needs --changed, --to <ID>, or a list of files');
   }
   const docs = loadDocs(cfg);
   const ids = byId(docs);
   const owned = new Set(docs.flatMap((d) => [...d.files.keys()].map((name) => fileOf(d, name))));
   const cited = new Map();
+  const entry = (id, prefix, num, anchor, tag) => {
+    const key = `${id}${anchor || tag ? `§${anchor || tag}` : ''}`;
+    if (!cited.has(key)) cited.set(key, { id, prefix, num, anchor, tag, by: [], links: [] });
+    return cited.get(key);
+  };
   for (const p of files) {
     if (inDocRoot(cfg, p) || owned.has(p)) continue;
     const text = readText(path.join(cfg.root, p));
     if (text === null || !D.HINT_RE.test(text)) continue;
     const { lines } = D.splitLines(text);
     for (const ref of D.refsInFile(p, lines, { markdown: /\.mdx?$/i.test(p), inDoc: false })) {
-      const at = ref.anchor || ref.tag;
       const id = D.docId(ref.prefix, ref.num);
-      const key = `${id}${at ? `§${at}` : ''}`;
-      if (!cited.has(key)) cited.set(key, { id, prefix: ref.prefix, num: ref.num, anchor: ref.anchor, tag: ref.tag, by: [] });
-      const note = ref.kind === 'noncanonical' ? ` (as ${ref.text}; write ${key})` : '';
-      cited.get(key).by.push(`${p}:${ref.i + 1}${note}`);
+      const at = ref.anchor || ref.tag;
+      const note = ref.kind === 'noncanonical' ? ` (as ${ref.text}; write ${id}${at ? `§${at}` : ''})` : '';
+      entry(id, ref.prefix, ref.num, ref.anchor, ref.tag).by.push(`${p}:${ref.i + 1}${note}`);
     }
   }
+
+  // Links back: the files outside every doc folder — attachments count — against what the pages
+  // of a linkBack type link, a deleted file included.
+  const inDocFolder = (p) => docs.some((d) => (d.kind === 'folder' ? p.startsWith(`${d.rel}/`) : p === d.rel));
+  const targets = new Set(files.filter((p) => !inDocFolder(p)));
+  const linking = docs.filter((d) => d.type.linkBack);
+  if (targets.size && linking.length) {
+    const find = pathFinder([...new Set([...repoFiles(cfg.root), ...targets])]);
+    for (const d of linking) {
+      const names = [...D.codeNames(d.model).filter((n) => n.kind === 'path' || n.kind === 'dir'), ...linkNames(cfg, d)];
+      for (const n of names) {
+        const named = n.kind === 'link' ? find.linkFiles(n.probe) : n.kind === 'path' ? find.pathFiles(n.probe) : find.dirFiles(n.probe);
+        const anchor = D.sectionAt(d.model, n.file, n.i);
+        for (const p of named.filter((f) => targets.has(f))) {
+          const line = `${p} (${fileOf(d, n.file)}:${n.i + 1})`;
+          const e = entry(d.id, d.prefix, d.num, anchor, null);
+          if (!e.links.includes(line)) e.links.push(line);
+        }
+      }
+    }
+  }
+
   if (!cited.size) {
     console.log(`No ${either(D.TYPES.map((t) => t.prefix))} references in those files.`);
     return 0;
@@ -666,18 +752,51 @@ function cmdRefs(cfg, args) {
     return D.compareIds(x.id, y.id) || Boolean(x.tag) - Boolean(y.tag) || (x.tag ? a.localeCompare(b) : D.compareAnchors(x.anchor || '0', y.anchor || '0'));
   });
   for (const key of keys) {
-    const { id, prefix, num, anchor, tag, by } = cited.get(key);
-    const doc = (ids.get(id) || [])[0];
-    const s = doc && anchor && doc.model.sections.get(anchor);
-    const title = s ? s.title : doc && !anchor && !tag ? (doc.model.h1 ? doc.model.h1.text : '') : '';
-    console.log(`${key}${title ? `  ${title}` : ''}`);
-    if (!kindOf(cfg, prefix)) console.log(`  not checked: ${uncheckedWhy(prefix)}`);
-    else if (!doc) console.log('  does not exist');
-    else if (tag) console.log(`  ${D.validateRef({ kind: 'full', prefix, num, tag }, ids).message}`);
-    else if (anchor && !s) console.log(`  not found in ${doc.rel}`);
-    else console.log(`  in ${fileOf(doc, s ? s.file : D.README)}${s ? `:${s.i + 1}` : ''}`);
-    console.log(`  cited by ${by.join(', ')}`);
+    const e = cited.get(key);
+    describeTarget(cfg, ids, e);
+    if (e.by.length) console.log(`  cited by ${e.by.join(', ')}`);
+    for (const l of e.links) console.log(`  links ${l}`);
   }
+  return 0;
+}
+
+// Everything that cites one doc or section: refs --to SDD004§3.2. A section's subsections count,
+// and so does a bare § in the doc's own files. `:` stands in for § where § is awkward to type.
+function cmdRefsTo(cfg, args) {
+  const prefixes = D.TYPES.map((t) => t.prefix);
+  const m = args.length === 1 && new RegExp(`^(${prefixes.join('|')})(\\d+)(?:[§:](\\d+(?:\\.\\d+)*))?$`, 'i').exec(args[0]);
+  if (!m) fail(`refs --to takes one id, with a section or without: ${prefixes[0]}004§3.2, or ${prefixes[0]}004:3.2`);
+  const prefix = m[1].toUpperCase();
+  const num = Number(m[2]);
+  const id = D.docId(prefix, num);
+  const anchor = m[3] || null;
+  const docs = loadDocs(cfg);
+  const ids = byId(docs);
+  const owner = new Map();
+  for (const d of docs) for (const [name, lines] of d.files) owner.set(fileOf(d, name), { doc: d, lines });
+  const by = [];
+  for (const p of citingFiles(cfg, docs)) {
+    const own = owner.get(p);
+    let lines = own && own.lines;
+    if (!lines) {
+      const text = readText(path.join(cfg.root, p));
+      if (text === null || !D.HINT_RE.test(text)) continue;
+      lines = D.splitLines(text).lines;
+    }
+    for (const ref of D.refsInFile(p, lines, { markdown: /\.mdx?$/i.test(p), inDoc: Boolean(own) })) {
+      if (D.refId(ref, own && own.doc) !== id) continue;
+      if (anchor && !(ref.anchor === anchor || (ref.anchor && ref.anchor.startsWith(`${anchor}.`)))) continue;
+      // A note when the citation is not simply the id asked for: another spelling, or a section
+      // below the one asked for, or a section of the doc asked for whole.
+      let note = '';
+      if (ref.kind !== 'full') note = ` (as ${ref.text})`;
+      else if ((ref.anchor || null) !== anchor) note = ` (§${ref.anchor || ref.tag})`;
+      by.push(`${p}:${ref.i + 1}${note}`);
+    }
+  }
+  describeTarget(cfg, ids, { id, prefix, num, anchor, tag: null });
+  if (!by.length) console.log(`  Nothing cites ${id}${anchor ? `§${anchor}` : ''}.`);
+  for (const b of by) console.log(`  cited by ${b}`);
   return 0;
 }
 

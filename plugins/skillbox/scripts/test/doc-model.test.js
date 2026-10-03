@@ -777,6 +777,38 @@ describe('doc types', () => {
     assert.deepEqual(D.fixDoc(only(old), ctx()).actions, []);
   });
 
+  test('a doc’s relative links: not URLs, anchors, code spans, fenced code, the index or links into docs', () => {
+    const files = D.fixDoc(
+      only(
+        readme('SDD001', 'A', [
+          ...section('1', 'One', [
+            '[a](x.md), ![img](i.png "Logo"), [u](https://e.com), [h](#top), [p](//host/x), `[c](c.md)`, [d](../SDD002-x/README.md).',
+            '```text',
+            '[f](f.md)',
+            '```',
+          ]),
+          ...section('2', 'Two', body('two', 12)),
+        ]),
+      ),
+      ctx(16),
+    ).files;
+    // Split, so README.md's index and each section file's breadcrumb hold links of their own.
+    assert.ok(files.has('1.md') && files.has('2.md'));
+    assert.deepEqual(
+      D.docLinks(D.buildModel(files)).map((l) => `${l.file}:${l.target}`),
+      ['1.md:x.md', '1.md:i.png'],
+    );
+  });
+
+  test('the section a line belongs to', () => {
+    const files = D.fixDoc(only(readme('SDD001', 'A', [...section('1', 'One'), ...section('2', 'Two', body('two', 12))])), ctx(16)).files;
+    const m = D.buildModel(files);
+    const lines = files.get(README);
+    assert.equal(D.sectionAt(m, README, 2), null, 'the abstract');
+    assert.equal(D.sectionAt(m, README, lines.indexOf('§1 line 1.')), '1');
+    assert.equal(D.sectionAt(m, '2.md', 0), '2', 'the breadcrumb of 2.md');
+  });
+
   test('migration can be held to some types: KBDOC short forms stay as written', () => {
     assert.equal(D.expandRefs('SDD001 §1 and KBDOC001 §1', { prefixes: ['SDD'] }).line, 'SDD001§1 and KBDOC001 §1');
     assert.equal(D.expandRefs('SDD001 §1 and KBDOC001 §1').line, 'SDD001§1 and KBDOC001§1');
