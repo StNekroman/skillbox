@@ -3,9 +3,9 @@
 This skill reads one file: `.skillbox/tickets.json`, under the root of the repository being worked
 in. It is committed, so a team shares one answer.
 
-The file is shared. The `draft-ticket`, `to-adr`, `to-sdd` and `jira-push-ticket` skills each read
-it and each fill only the keys they need, so whichever runs first creates it and the others add to
-it. Never remove or rewrite a key this skill does not use.
+The file is shared. The `draft-ticket`, `to-adr`, `to-sdd`, `to-kb` and `jira-push-ticket` skills
+each read it and each fill only the keys they need, so whichever runs first creates it and the
+others add to it. Never remove or rewrite a key this skill does not use.
 
 ## The keys this skill uses
 
@@ -17,7 +17,7 @@ it. Never remove or rewrite a key this skill does not use.
   },
   "paths": {
     "draftRoot": "devdoc/proposed-tickets",
-    "docRoots": ["devdoc/architecture-decisions", "devdoc/sdd", "devdoc/specs", "devdoc/tech"]
+    "docRoots": ["devdoc/architecture-decisions", "devdoc/kb", "devdoc/sdd", "devdoc/specs", "devdoc/tech"]
   },
   "domainNotes": ".github/copilot-instructions.md"
 }
@@ -26,7 +26,7 @@ it. Never remove or rewrite a key this skill does not use.
 | Key | Meaning |
 |---|---|
 | `paths.draftRoot` | Where drafts live, relative to the repository root |
-| `paths.docRoots` | Directories searched for inbound references to a draft when it is pushed to a tracker. ADRs, specs, tech docs — whatever this repository has. Includes `paths.adrRoot` and `paths.sddRoot` whenever they are set |
+| `paths.docRoots` | Directories searched for inbound references to a draft when it is pushed to a tracker. ADRs, specs, tech docs — whatever this repository has. Includes `paths.adrRoot`, `paths.sddRoot` and `paths.kbRoot` whenever they are set |
 | `domainNotes` | Optional. A repository document holding domain gotchas a drafter must read before writing about them. Omit the key when there is none |
 | `jira.site` | Optional. Site URL, used to write `<site>/browse/<KEY>` links |
 

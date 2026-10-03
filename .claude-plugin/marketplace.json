@@ -9,7 +9,7 @@
   "plugins": [
     {
       "name": "skillbox",
-      "description": "Core: fork a conversation at a chosen point, navigate the fork tree, draft tickets and ADRs as markdown, keep SDDs true as the code changes.",
+      "description": "Core: fork a conversation at a chosen point, navigate the fork tree, draft tickets and ADRs as markdown, keep SDDs true as the code changes and a knowledge base beside them.",
       "author": { "name": "Roman Nefedov" },
       "category": "productivity",
       "source": "./plugins/skillbox"

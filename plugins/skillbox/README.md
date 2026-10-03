@@ -2,20 +2,22 @@
 
 The core of the family: everything here needs nothing beyond Node. Fork a Claude Code conversation
 into a new session truncated at a chosen point and navigate the resulting tree; write settled
-research into ticket draft files, settled architecture decisions into ADRs, and keep the
-repository's SDDs true as the code changes.
+research into ticket draft files, settled architecture decisions into ADRs, keep the repository's
+SDDs true as the code changes, and keep a knowledge base about the world outside the code beside
+them.
 
 ## Components
 
-| Component                                       | Kind      | What                                                                                            |
-| ----------------------------------------------- | --------- | ----------------------------------------------------------------------------------------------- |
-| `/skillbox:fork-at`                             | command   | Fork the conversation at a chosen turn                                                          |
-| `/skillbox:fork-tree`                           | command   | Show where this session sits among its forks                                                    |
-| [`draft-ticket`](skills/draft-ticket/README.md) | skill     | Writes one markdown file per deliverable, in a fixed ticket structure, every claim verified     |
-| [`to-adr`](skills/to-adr/README.md)             | skill     | Records a settled architecture decision as an ADR — and writes nothing when there is none       |
-| [`to-sdd`](skills/to-sdd/README.md)             | skill     | After a code change, corrects or extends the SDDs it touched — and writes nothing below the bar |
-| `hooks/hooks.json`                              | hook      | Stop hook: checks the SDDs changed in a turn before the turn ends                               |
-| [`scripts/`](scripts/README.md)                 | node      | The fork implementation and the tests of every script, plus env vars and internals              |
+| Component                                       | Kind    | What                                                                                                    |
+| ----------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------- |
+| `/skillbox:fork-at`                             | command | Fork the conversation at a chosen turn                                                                  |
+| `/skillbox:fork-tree`                           | command | Show where this session sits among its forks                                                            |
+| [`draft-ticket`](skills/draft-ticket/README.md) | skill   | Writes one markdown file per deliverable, in a fixed ticket structure, every claim verified             |
+| [`to-adr`](skills/to-adr/README.md)             | skill   | Records a settled architecture decision as an ADR — and writes nothing when there is none               |
+| [`to-sdd`](skills/to-sdd/README.md)             | skill   | After a code change, corrects or extends the SDDs it touched — and writes nothing below the bar         |
+| [`to-kb`](skills/to-kb/README.md)               | skill   | Adds research and outside facts to the knowledge base, each with its source — and only what you confirm |
+| `hooks/hooks.json`                              | hook    | Stop hook: checks the SDDs and knowledge-base pages changed in a turn before the turn ends              |
+| [`scripts/`](scripts/README.md)                 | node    | The fork implementation, the doc checker’s source, and the tests of every script                        |
 
 Commands are documented here rather than beside their files: every `.md` in `commands/` registers
 as a command, so a README in there would appear as a stray `/readme`.
@@ -120,9 +122,27 @@ breaks when files split or merge.
 
 The plugin's Stop hook checks the SDDs changed in a turn before the turn ends, and sends problems
 back to the agent. The plugin sets it up in Claude Code; other agents can have it wired in by hand.
-It does nothing in a repository whose config names no `paths.sddRoot`, and on first use the skill
-proposes the `CLAUDE.md` or `AGENTS.md` lines that make sessions read and update SDDs at all. [The skill's README](skills/to-sdd/README.md) has the format, the bar and the
-script, which ships inside the skill folder.
+It does nothing in a repository whose config names neither `paths.sddRoot` nor `paths.kbRoot`, and on
+first use the skill proposes the `CLAUDE.md` or `AGENTS.md` lines that make sessions read and
+update SDDs and the knowledge base at all. [The skill's README](skills/to-sdd/README.md) has the
+format, the bar and the script, a copy of which ships inside the skill folder.
+
+## to-kb
+
+The knowledge base is the repository's memory of the world the product lives in: the services it
+integrates and how they behave, the rules outside parties enforce, laws and policies, research
+about its market and users, know-how the team wants to keep. One page per topic, `KBDOCnnn-<slug>/`
+under `paths.kbRoot`, in the same format as the SDDs, committed so the team shares it.
+
+An SDD is checked against the code; a knowledge-base fact cannot be, so every fact an agent adds
+cites its source — a URL with the date read, an attachment, or a record in the page's `Evidence`
+section — and the skill writes only what you confirm. The two stores cite each other: an SDD rule
+built around an outside constraint cites the page that holds it, and a page may link the code it is
+about. When that code changes, `to-sdd` reports the page's section, so it is looked at again.
+
+`to-sdd` and `to-kb` share one init and one block for `CLAUDE.md` or `AGENTS.md`: whichever runs
+first sets up both stores. [The skill's README](skills/to-kb/README.md) has what belongs and how
+sources are kept.
 
 ## Configuration
 
@@ -149,34 +169,39 @@ installed on its own. The whole file:
     "adrRoot": "devdoc/architecture-decisions",
     "adrTemplate": "devdoc/architecture-decisions/template.md",
     "sddRoot": "devdoc/sdd",
-    "docRoots": ["devdoc/architecture-decisions", "devdoc/sdd", "devdoc/specs", "devdoc/tech"]
+    "kbRoot": "devdoc/kb",
+    "docRoots": ["devdoc/architecture-decisions", "devdoc/kb", "devdoc/sdd", "devdoc/specs", "devdoc/tech"]
   },
   "sdd": {
+    "maxLines": 500
+  },
+  "kb": {
     "maxLines": 500
   },
   "domainNotes": ".github/copilot-instructions.md"
 }
 ```
 
-| Key                                        | Filled by                                             | Read by                                      |
-| ------------------------------------------ | ----------------------------------------------------- | -------------------------------------------- |
-| `paths.draftRoot`                          | `draft-ticket`                                        | `draft-ticket`, `jira-push-ticket`           |
-| `paths.adrRoot`, `paths.adrTemplate`       | `to-adr`                                              | `to-adr`                                     |
-| `paths.sddRoot`, `sdd.maxLines`            | `to-sdd`                                              | `to-sdd`, its script, the Stop hook          |
-| `paths.docRoots`                           | `draft-ticket`; `to-adr` and `to-sdd` add their roots | `jira-push-ticket`                           |
-| `domainNotes`                              | you, by hand                                          | `draft-ticket`                               |
-| `jira.site`                                | whichever skill first cites or pushes an issue        | `draft-ticket`, `to-adr`, `jira-push-ticket` |
-| `jira.projects`, `jira.severityToPriority` | `jira-push-ticket`                                    | `jira-push-ticket`                           |
+| Key                                        | Filled by                                                      | Read by                                      |
+| ------------------------------------------ | -------------------------------------------------------------- | -------------------------------------------- |
+| `paths.draftRoot`                          | `draft-ticket`                                                 | `draft-ticket`, `jira-push-ticket`           |
+| `paths.adrRoot`, `paths.adrTemplate`       | `to-adr`                                                       | `to-adr`                                     |
+| `paths.sddRoot`, `sdd.maxLines`            | `to-sdd` or `to-kb`, one shared init                           | `to-sdd`, the shared script, the Stop hook   |
+| `paths.kbRoot`, `kb.maxLines`              | `to-sdd` or `to-kb`, one shared init                           | `to-kb`, the shared script, the Stop hook    |
+| `paths.docRoots`                           | `draft-ticket`; `to-adr`, `to-sdd` and `to-kb` add their roots | `jira-push-ticket`                           |
+| `domainNotes`                              | you, by hand                                                   | `draft-ticket`                               |
+| `jira.site`                                | whichever skill first cites or pushes an issue                 | `draft-ticket`, `to-adr`, `jira-push-ticket` |
+| `jira.projects`, `jira.severityToPriority` | `jira-push-ticket`                                             | `jira-push-ticket`                           |
 
 What each key means, and the init that fills it, is in the skill's own reference:
 [draft-ticket](skills/draft-ticket/references/config.md), [to-adr](skills/to-adr/references/config.md),
-[to-sdd](skills/to-sdd/references/config.md), and
+[to-sdd and to-kb](skills/to-sdd/references/config.md) (one file, the same in both), and
 [jira-push-ticket](../skillbox-jira/skills/jira-push-ticket/references/config.md) in the addon.
 Commit the file. Ignore only `.skillbox/cache/`, the place for anything derived or per-developer.
 
 ## Requirements
 
-Node. Developed against v22; anything with `crypto.randomUUID` will do. The SDD hook and
+Node. Developed against v22; anything with `crypto.randomUUID` will do. The doc hook and
 `doc-check.js refs --changed` also need git.
 
 The fork commands drive Claude Code's own session store and CLI, including two undocumented flags.

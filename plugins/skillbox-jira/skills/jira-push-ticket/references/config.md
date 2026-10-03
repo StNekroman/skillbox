@@ -4,9 +4,9 @@ This skill reads one file: `.skillbox/tickets.json`, under the root of the repos
 in. It is committed, so a team shares one answer. It holds no secrets — the Atlassian MCP server
 owns authentication — so it is safe to commit.
 
-The file is shared. The `draft-ticket`, `to-adr`, `to-sdd` and `jira-push-ticket` skills each read
-it and each fill only the keys they need, so whichever runs first creates it and the others add to
-it. Never remove or rewrite a key this skill does not use.
+The file is shared. The `draft-ticket`, `to-adr`, `to-sdd`, `to-kb` and `jira-push-ticket` skills
+each read it and each fill only the keys they need, so whichever runs first creates it and the
+others add to it. Never remove or rewrite a key this skill does not use.
 
 Everything Jira can be asked about is discovered at run time and never written here. What is
 recorded is only what Jira cannot tell you: which site and projects you meant, and how your
@@ -29,7 +29,7 @@ severities map to its priorities.
   },
   "paths": {
     "draftRoot": "devdoc/proposed-tickets",
-    "docRoots": ["devdoc/architecture-decisions", "devdoc/sdd", "devdoc/specs", "devdoc/tech"]
+    "docRoots": ["devdoc/architecture-decisions", "devdoc/kb", "devdoc/sdd", "devdoc/specs", "devdoc/tech"]
   }
 }
 ```
@@ -42,8 +42,8 @@ severities map to its priorities.
 | `paths.draftRoot` | Where drafts live, relative to the repository root |
 | `paths.docRoots` | Directories searched for inbound references to a draft: ADRs, specs, tech docs — whatever this repository has. Where references cluster, not where they are allowed to be |
 
-The `paths` keys are written by the skills that draft tickets and record decisions. This skill
-reads them, and fills them only when the file has none.
+The `paths` keys are written by the skills that draft tickets, record decisions, and keep the SDDs
+and the knowledge base. This skill reads them, and fills them only when the file has none.
 
 ## Discovered, never configured
 

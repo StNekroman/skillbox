@@ -4,9 +4,10 @@ The implementation behind `/skillbox:fork-at` and `/skillbox:fork-tree`, and the
 script in the plugin. The command files in `../commands/` invoke the fork scripts through
 `${CLAUDE_PLUGIN_ROOT}`.
 
-The doc checker behind the `to-sdd` skill and the Stop hook has its one editable source here, in
-`doc-check/`. Each skill that runs it carries an identical copy in its own `scripts/`, so that the
-skill folder works when it is installed on its own; `npm run sync` writes the copies from the
+The doc checker behind the `to-sdd` and `to-kb` skills and the Stop hook has its one editable
+source here, in `doc-check/`, with the references both skills share. Each skill carries identical
+copies — the script in its own `scripts/`, the shared references in its `references/` — so that
+the skill folder works when it is installed on its own; `npm run sync` writes the copies from the
 source, and `npm test` fails while one differs. Edit the source, never a copy. A skill runs its
 copy through `${CLAUDE_SKILL_DIR}`; `../hooks/hooks.json` runs the source through
 `${CLAUDE_PLUGIN_ROOT}`. The checker requires nothing from outside `doc-check/`.
@@ -16,8 +17,9 @@ copy through `${CLAUDE_SKILL_DIR}`; `../hooks/hooks.json` runs the source throug
 | `fork-at.js` | Resolves a cut point and opens a window at once; in that window, creates the child with one headless turn and resumes it |
 | `fork-tree.js` | Renders the fork tree; interactive picker when run from a TTY |
 | `lib/fork-graph.js` | Shared: transcript reading, edge collection, session metadata, terminal launching |
-| `doc-check/doc-check.js` | SDD checks and repairs — `check`, `fix`, `migrate`, `lint`, `refs`, `next` — and the Stop hook, `hook`. Disk and git work only |
-| `doc-check/lib/doc-model.js` | The SDD model, pure: parsing a doc, the rules, the mechanical repairs, finding references, the content leads |
+| `doc-check/doc-check.js` | Doc checks and repairs, for SDDs and knowledge-base pages — `check`, `fix`, `migrate`, `lint`, `refs`, `next` — and the Stop hook, `hook`. Disk and git work only |
+| `doc-check/lib/doc-model.js` | The doc model, pure: the doc types, parsing a doc, the rules, the mechanical repairs, finding references and links, the content leads |
+| `doc-check/references/` | What `to-sdd` and `to-kb` share word for word: the format, the configuration and its init, the agent-instructions block |
 | `test/` | Unit and end-to-end tests for all of the above, run with Node's built-in runner |
 
 Run them directly for things a slash command cannot do — `fork-tree.js` from a real terminal gets
@@ -84,19 +86,41 @@ background process, so no window opens and no model is called.
 The scripts are importable for this reason: `main()` runs only under `require.main === module`, and a
 failure throws `CliError` instead of exiting, which `runMain` turns into the printed error.
 
-`doc-model.test.js` covers the SDD model directly, including 25 generated docs run through `fix` at
+`doc-model.test.js` covers the doc model directly, including 25 generated docs run through `fix` at
 five limits each — split from one file, then merged back at four times the limit and again with
 their text cut: every line of text must survive in reading order, nothing `fix` could still
 repair may remain, and a second run must change nothing. A doc that fits within two-thirds of the
 limit must fold back into `README.md` alone. `doc-check.test.js` runs `doc-check.js` end to end in
 throwaway git repositories — as the skill runs it, and as the Stop hook does, with hook input on
-stdin. Tests that need git are skipped where it is not installed.
+stdin. Tests that need git are skipped where it is not installed. `../../../tools/test/` checks
+that every skill's copy matches the source, and that the sync tool finds and repairs each kind of
+drift.
 
-## The SDD checker
+## The doc checker
 
-`doc-check.js` finds the repository by walking up to `.skillbox/tickets.json`, and reads
-`paths.sddRoot` and `sdd.maxLines` from it. The split rule, the formats and the reasons behind them
-are in the [to-sdd README](../skills/to-sdd/README.md); these matter here.
+`doc-check.js` finds the repository by walking up to `.skillbox/tickets.json`, and reads each doc
+type's root and limit from it: `paths.sddRoot` and `sdd.maxLines`, `paths.kbRoot` and
+`kb.maxLines`. The split rule, the formats and the reasons behind them are in the
+[to-sdd README](../skills/to-sdd/README.md); these matter here.
+
+**One engine, a registry of types.** `TYPES` in `lib/doc-model.js` lists each doc type: its
+prefix, its config keys, its noun for messages, whether it still has single-file docs to migrate,
+whether `refs` reports the sections that link a changed file, and which of `lint`'s leads apply.
+Everything else — the grammar, the layout, the hook — is built from it and shared. Docs are keyed
+by their id string, so `SDD001` and `KBDOC001` are two docs. A prefix is capitals only and starts
+no other, which the module asserts as it loads, so no reference can be read as another type's.
+Every registered prefix is parsed whatever is configured; a reference to a type the config names no
+root for is a warning, "not checked", never an error.
+
+| | SDD | KBDOC |
+|---|---|---|
+| Where | `paths.sddRoot`, `sdd.maxLines` | `paths.kbRoot`, `kb.maxLines` |
+| Single-file docs, `migrate` | yes | no |
+| A line-number citation | an error | allowed |
+| `lint`: history wording, fenced code | yes | no — content on a page about another system |
+| `lint`: names in backticks the code lacks | paths, file names, identifiers | paths only — other systems' names are not ours |
+| `lint`: labels in titles, links to nothing | yes | yes |
+| `refs --changed` reports sections that link a changed file | no | yes |
 
 **`fix` refuses rather than guesses.** A doc with a structural problem — an anchor defined twice, a
 section with no parent, an unnumbered heading at section level — is left untouched, because moving
@@ -105,7 +129,7 @@ text around it could misplace some. Everything else it repairs is mechanical and
 **The layout is settled one move at a time, by size.** Each step rebuilds the model and takes the
 first move that applies: a section out of place goes to the file that holds its parent; a section
 file with none below it goes back into its parent's file when the result stays within two-thirds
-of `sdd.maxLines`; the largest inline subsection leaves a file being split. A file starts being
+of the type's limit; the largest inline subsection leaves a file being split. A file starts being
 split when it passes the limit and goes on down to two-thirds — or to the limit, when the
 section's own text alone is longer than two-thirds. Because a split begins only above the limit
 and a merge may fill only to two-thirds, and the merge is measured by building it rather than
@@ -118,10 +142,11 @@ straight after a bare id (`SDD001 (esp. §7)`); a § after a space (`SDD007 §8`
 each as a short form, and `migrate`'s `expandRefs` rewrites exactly those, so the two cannot
 disagree. Parentheses holding a § after an *anchored* reference are the citing doc's own
 (`SDD013§2.2 (§4.9)` in SDD002 cites SDD002's §4.9), and a § after an all-caps name or a number
-is another document's (`RFC 6265 §5.3`). A label where the number belongs (`SDD013§P6`) is an
+is another document's (`RFC 6265 §5.3`) — unless the name is a registered id, which claims the §
+first (`SDD001 (see KBDOC002 §3)` gives §3 to KBDOC002). A label where the number belongs (`SDD013§P6`) is an
 error, not a whole-doc reference; lowercase letters (`§x.y`) are a placeholder and left alone.
 The error names the sections whose titles carry the label bare, `(§P6)`, in the doc cited, or
-else in every SDD that has them: a bare label in SDD002 is usually another doc's. A section's
+else in every doc of its type that has them: a bare label in SDD002 is usually another SDD's. A section's
 title is read for what it cites, like any text; a bare label in a title is where the label is
 defined, so `lint` reports it instead, for the content step that comes after the references.
 
@@ -132,22 +157,35 @@ one in a string literal would otherwise hide the file's citations from `check` a
 **`lint` gives leads, never verdicts.** History wording is a phrase list; a fence with a language
 other than a diagram or plain text is copied code. Names in backticks are looked up only when
 they have the shape of code — a path with an extension, a dotted member, a call, camelCase,
-snake_case. Identifiers are matched as whole words against every text file outside the SDDs and
-the docs, read once, so a run costs one pass over the repository however many names there are.
+snake_case. Identifiers are matched as whole words against every text file outside the doc
+roots and the docs, read once, so a run costs one pass over the repository however many names there are.
 A name found only under a `migrations/` directory is reported as such, since a migration keeps
 the names it deletes. A path is matched against the file list: exactly from the root, loosely
 (the directories it names, in order) when shorter, and a path git ignores — build output — is
-not reported. It needs no git; without it the walk supplies the file list.
+not reported. A relative markdown link is resolved from the file it sits in, a leading `/` from
+the repository root, and must name a file, or a directory holding one, exactly — case included,
+as wherever else the repository is checked out; one that leaves the repository is reported too.
+URLs, in-page anchors, links in code spans or fences, the generated index and breadcrumbs, and
+links into a doc, which `check` reports, are not looked up. It needs no git; without it the walk
+supplies the file list.
 
-**The reference scan reads only what can cite.** With git, `check`, `fix` and `migrate` read the
-files `git grep` finds `SDD` in — tracked or untracked, ignored ones excluded — plus the SDD files
-themselves, so the work grows with the citations, not the repository. Without git, they walk every
+**Links back.** A knowledge-base page may describe our code without the code citing it. For a type
+with `linkBack`, `refs` matches the changed files — or the files given — against what each page
+links, by markdown link or by a path in backticks, and lists the section each sits in. The changed
+files include a deleted one and a rename's old path, matched against the file list as it was; an
+attachment under the knowledge-base root counts, a file inside a doc folder does not. `refs --to`
+runs the other way: everything that cites one doc or section, subsections and other spellings
+included.
+
+**The reference scan reads only what can cite.** With git, `check`, `fix`, `migrate` and
+`refs --to` read the files `git grep` finds a prefix followed by a digit in — tracked or untracked,
+ignored ones excluded — plus the docs' own files, so the work grows with the citations, not the repository. Without git, they walk every
 file below the root, minus dot-directories and `node_modules`.
 
-**The hook is cheap by construction.** It exits at once without a config or a `paths.sddRoot`, then
-asks git which files changed since `HEAD` and checks only the SDD folders among them, and the
-references inside those. It still parses every SDD under `paths.sddRoot` — numbering and references
-are validated against all of them — but reads no file outside it: the repository-wide reference
+**The hook is cheap by construction.** It exits at once without a config or a doc root, then asks
+git which files changed since `HEAD` and checks only the doc folders among them, and the references
+inside those. It still parses every doc under the roots — numbering and references are validated
+against all of them — but reads no file outside them: the repository-wide reference
 scan is `check`'s job, run by the skill, not something to pay for at the end of every turn. It
 sends the turn back only on an error, and never when it was already sent back once:
 `stop_hook_active`, or Cursor's `loop_count`.
@@ -196,10 +234,19 @@ no compatibility promise:
 
 A Claude Code upgrade is the likeliest thing to break this.
 
+## Sync
+
+`../../../tools/sync-doc-check.js` copies `doc-check/` into every skill that ships it: everything
+but `references/` into the skill's `scripts/`, which it owns outright — a file the source no longer
+has is deleted there — and `references/<name>.md` into the skill's `references/`, where only those
+names are its own. It lives outside `plugins/`, so it never installs. `npm run sync` writes the
+copies; `npm run sync:check` lists what is out of date. A skill that needs the checker is added to
+its `SKILLS` list. `.gitattributes` marks the copies generated, so a pull request collapses them.
+
 ## What they write
 
 `doc-check.js` writes only inside the repository it runs in, and only for `fix` and `migrate`
-without `--dry-run`: SDD files — `fix` also deletes the section files it merges back — and, for
+without `--dry-run`: doc files — `fix` also deletes the section files it merges back — and, for
 `migrate`, the files whose links and references it rewrites. It never stages or commits. The hook, `check`, `lint`, `refs` and `next` write nothing.
 
 The fork scripts write in the config directory. Apart from the child's own transcript, whose

@@ -3,11 +3,12 @@
 This skill reads one file: `.skillbox/tickets.json`, under the root of the repository being worked
 in. It is committed, so a team shares one answer.
 
-The file is shared. The `draft-ticket`, `to-adr`, `to-sdd` and `jira-push-ticket` skills each read
-it and each fill only the keys they need, so whichever runs first creates it and the others add to
-it. Never remove or rewrite a key this skill does not use. The file is named for the ticket skills;
-where ADRs live is one more of the repository's document paths, and `jira-push-ticket` has to know
-them all to rewrite links inside them, so one file answers every path question.
+The file is shared. The `draft-ticket`, `to-adr`, `to-sdd`, `to-kb` and `jira-push-ticket` skills
+each read it and each fill only the keys they need, so whichever runs first creates it and the
+others add to it. Never remove or rewrite a key this skill does not use. The file is named for the
+ticket skills; where ADRs live is one more of the repository's document paths, and
+`jira-push-ticket` has to know them all to rewrite links inside them, so one file answers every path
+question.
 
 ## The keys this skill uses
 
@@ -20,7 +21,7 @@ them all to rewrite links inside them, so one file answers every path question.
   "paths": {
     "adrRoot": "devdoc/architecture-decisions",
     "adrTemplate": "devdoc/architecture-decisions/template.md",
-    "docRoots": ["devdoc/architecture-decisions", "devdoc/sdd", "devdoc/specs", "devdoc/tech"]
+    "docRoots": ["devdoc/architecture-decisions", "devdoc/kb", "devdoc/sdd", "devdoc/specs", "devdoc/tech"]
   }
 }
 ```
