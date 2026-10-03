@@ -10,26 +10,27 @@ const issuesOf = (files, maxLines) => D.checkDoc(D.buildModel(files), ctx(maxLin
 const messages = (issues) => issues.map((x) => `${x.file}${x.line ? `:${x.line}` : ''}: ${x.message}`);
 const only = (lines) => new Map([[README, lines]]);
 
-// A doc's own text in reading order — README.md, then each section file by anchor — without what
-// fix generates or drops on the way: the index, breadcrumbs, blank lines, thematic breaks and the
-// number of #s on a heading.
+// A doc's own text in reading order, whichever files hold it: what README.md has above its first
+// section, then every section's text in anchor order. Without what fix generates or drops on the
+// way: the index, breadcrumbs, blank lines, thematic breaks and the number of #s on a heading.
 function prose(files) {
-  const sectionFiles = [...files.keys()]
-    .filter((n) => n !== README)
-    .sort((a, b) => D.compareAnchors(a.slice(0, -3), b.slice(0, -3)));
-  const out = [];
-  for (const name of [README, ...sectionFiles]) {
-    let lines = files.get(name);
+  const top = [];
+  const chunks = [];
+  for (const [name, all] of files) {
+    let lines = all;
     if (name === README) {
       const a = lines.indexOf(D.INDEX_OPEN);
       if (a >= 0) lines = [...lines.slice(0, a), ...lines.slice(lines.indexOf(D.INDEX_CLOSE) + 1)];
       lines = lines.filter((l) => l !== '## Index');
-    } else {
-      lines = lines.slice(1);
     }
-    out.push(...lines.filter((l) => l.trim() && !/^-{3,}$/.test(l.trim())).map((l) => l.replace(/^#{1,6} /, '# ')));
+    const starts = D.scanFile(name, lines).headings.filter((h) => h.section);
+    if (name === README) top.push(...lines.slice(0, starts.length ? starts[0].i : lines.length));
+    starts.forEach((h, k) => chunks.push({ anchor: h.section.anchor, lines: lines.slice(h.i, starts[k + 1] ? starts[k + 1].i : lines.length) }));
   }
-  return out;
+  chunks.sort((a, b) => D.compareAnchors(a.anchor, b.anchor));
+  return [...top, ...chunks.flatMap((c) => c.lines)]
+    .filter((l) => l.trim() && !/^-{3,}$/.test(l.trim()))
+    .map((l) => l.replace(/^#{1,6} /, '# '));
 }
 
 // §1 Overview, §2 Delivery with §2.1 Retries: 22 lines before fix adds an index.
@@ -122,9 +123,32 @@ describe('section files', () => {
     assert.ok(messages(issuesOf(withFile('notes.md', ['x']))).some((m) => m.startsWith('notes.md: not a section file')));
   });
 
-  test('a section has its own file only when its parent has one', () => {
+  test('a section file whose parent has none is moved into the file that holds the parent', () => {
     const files = new Map([[README, readme('SDD001', 'A', section('1', 'One'))], ['1.1.md', section('1.1', 'Sub')]]);
-    assert.ok(issuesOf(files).some((x) => x.structural && /§1\.1 has its own file, but its parent §1 does not/.test(x.message)));
+    assert.ok(
+      messages(issuesOf(files)).includes('1.1.md:1: §1.1 has its own file, but its parent §1 does not; fix moves it into README.md'),
+    );
+    const res = D.fixDoc(files, ctx());
+    assert.deepEqual([...res.files.keys()], [README]);
+    assert.deepEqual(res.actions, ['moved §1.1 into README.md, where its parent is', 'regenerated the index']);
+    assert.deepEqual(prose(res.files), prose(files));
+    assert.deepEqual(issuesOf(res.files), []);
+  });
+
+  test('a section written into another section’s file is moved to its parent’s file', () => {
+    const files = new Map([
+      [README, readme('SDD001', 'A', [...section('1', 'One'), ...section('3', 'Three')])],
+      ['2.md', ['> [SDD001 — A](README.md)', '', ...section('2', 'Two'), ...section('1.1', 'Stray')]],
+    ]);
+    assert.ok(messages(issuesOf(files)).includes('2.md:7: §1.1 belongs in README.md, with its parent; fix moves it there'));
+    const res = D.fixDoc(files, ctx());
+    assert.deepEqual(res.actions, ['moved §1.1 into README.md, where its parent is', 'merged §2 back into README.md', 'regenerated the index']);
+    const out = res.files.get(README);
+    assert.deepEqual(
+      out.filter((l) => /^#+ §/.test(l)),
+      ['## §1 One', '### §1.1 Stray', '## §2 Two', '## §3 Three'],
+    );
+    assert.deepEqual(prose(res.files), prose(files));
   });
 });
 
@@ -213,7 +237,7 @@ describe('fix', () => {
     ]);
   });
 
-  test('over the limit, every top-level section moves out, and README.md keeps the rest', () => {
+  test('over the limit, sections move out largest first, until README.md keeps only the rest', () => {
     const res = D.fixDoc(mail(), ctx(20));
     assert.deepEqual([...res.files.keys()].sort(), ['1.md', '2.md', README]);
     assert.deepEqual(res.files.get(README), [
@@ -263,13 +287,56 @@ describe('fix', () => {
     assert.deepEqual(issuesOf(res.files, 12), []);
   });
 
-  test('a new sibling of moved-out sections gets its own file too', () => {
+  test('only the largest move out: the small sections stay with their parent', () => {
+    // 34 lines at a limit of 30: moving §2 out leaves 19, within two-thirds of 30.
+    const input = only(readme('SDD001', 'A', [...section('1', 'One'), ...section('2', 'Two', body('two', 12)), ...section('3', 'Three')]));
+    const res = D.fixDoc(input, ctx(30));
+    assert.deepEqual([...res.files.keys()].sort(), ['2.md', README]);
+    assert.deepEqual(res.actions, ['moved §2 out of README.md into its own file', 'regenerated the index']);
+    const out = res.files.get(README);
+    assert.deepEqual(out.slice(out.indexOf(D.INDEX_OPEN) + 1, out.indexOf(D.INDEX_CLOSE)), ['- §1 One', '- [§2 Two](2.md)', '- §3 Three']);
+    assert.ok(out.length <= 20, `${out.length} lines`);
+    assert.deepEqual(issuesOf(res.files, 30), []);
+    assert.deepEqual(D.fixDoc(res.files, ctx(30)).actions, []);
+  });
+
+  test('when a section’s own text is over two-thirds of the limit, its file is split only down to the limit', () => {
+    // 1.md: §1's own text is 17 lines, over 13, so the file stops at 20 with §1.2 still in it.
+    const input = only(
+      readme('SDD001', 'A', [...section('1', 'One', body('one', 12)), ...section('1.1', 'Sub', body('sub', 5)), ...section('1.2', 'Small')]),
+    );
+    const res = D.fixDoc(input, ctx(20));
+    assert.deepEqual([...res.files.keys()].sort(), ['1.1.md', '1.md', README]);
+    assert.ok(res.files.get('1.md').includes('### §1.2 Small'));
+    assert.ok(res.files.get('1.md').length <= 20, `${res.files.get('1.md').length} lines`);
+    assert.deepEqual(issuesOf(res.files, 20), []);
+    assert.deepEqual(D.fixDoc(res.files, ctx(20)).actions, []);
+  });
+
+  test('a section file that fits back into its parent’s file is merged back; one that does not stays', () => {
+    const split = D.fixDoc(
+      only(readme('SDD001', 'A', [...section('1', 'One', body('one', 2)), ...section('2', 'Two', body('two', 30)), ...section('3', 'Three', body('three', 2))])),
+      ctx(10),
+    ).files;
+    assert.deepEqual([...split.keys()].sort(), ['1.md', '2.md', '3.md', README]);
+    assert.deepEqual(
+      messages(issuesOf(split, 40).filter((x) => x.fixable)),
+      ['1.md: §1 fits back into README.md, 16 lines together, within 26; fix merges it', '3.md: §3 fits back into README.md, 16 lines together, within 26; fix merges it'],
+    );
+    const res = D.fixDoc(split, ctx(40));
+    assert.deepEqual(res.actions, ['merged §1, §3 back into README.md', 'regenerated the index']);
+    assert.deepEqual([...res.files.keys()].sort(), ['2.md', README]);
+    assert.deepEqual(prose(res.files), prose(split));
+    assert.deepEqual(issuesOf(res.files, 40), []);
+  });
+
+  test('a new section written in its parent’s file stays there while the file has room', () => {
     const files = D.fixDoc(mail(), ctx(20)).files;
     files.set(README, [...files.get(README), '', ...section('3', 'Late addition')]);
-    assert.ok(messages(issuesOf(files, 20)).some((m) => /§3 needs its own file, like its sibling §1/.test(m)));
     const res = D.fixDoc(files, ctx(20));
-    assert.ok(res.actions.includes('moved §3 out of README.md into their own files'));
-    assert.deepEqual(res.files.get('3.md').slice(2), ['## §3 Late addition', '', '§3 line 1.']);
+    assert.deepEqual(res.actions, ['regenerated the index']);
+    assert.ok(!res.files.has('3.md'));
+    assert.ok(res.files.get(README).includes('- §3 Late addition'));
     assert.deepEqual(issuesOf(res.files, 20), []);
   });
 
@@ -376,7 +443,9 @@ describe('fix', () => {
   // Generated docs, every shape fix meets: nesting four deep, a code fence holding a fake section
   // heading, an unnumbered note heading inside a section, thematic breaks between sections. At
   // each limit fix must keep every line of text in order, leave nothing it could still repair,
-  // leave no file over the limit that it could have split, and change nothing when run again.
+  // leave no file over the limit that it could have split, and change nothing when run again —
+  // splitting a doc that is one file, and merging back a doc already split, once the limit is
+  // raised or its text cut.
   function generated(seed) {
     const rnd = prng(seed);
     const int = (a, b) => a + Math.floor(rnd() * (b - a + 1));
@@ -397,28 +466,52 @@ describe('fix', () => {
     return only(lines);
   }
 
+  // The doc with every section's text cut to its first line.
+  const shrink = (files) => new Map([...files].map(([name, lines]) => [name, lines.filter((l) => !/^§[\d.]+ line (?:[2-9]|\d{2,})\.$/.test(l))]));
+
+  function settled(input, max, what) {
+    const res = D.fixDoc(input, ctx(max));
+    assert.equal(res.blocked, null, what);
+    assert.deepEqual(prose(res.files), prose(input), `text changed: ${what}`);
+    const after = issuesOf(res.files, max);
+    assert.deepEqual(messages(after.filter((x) => x.fixable || x.structural)), [], what);
+    for (const [name, lines] of res.files) {
+      if (lines.length <= max) continue;
+      assert.ok(
+        after.some((x) => x.file === name && /no (subsections|sections left) to move out/.test(x.message)),
+        `${name} is ${lines.length} lines with nothing reported: ${what}`,
+      );
+    }
+    const again = D.fixDoc(res.files, ctx(max));
+    assert.deepEqual(again.actions, [], `second run: ${what}`);
+    assert.deepEqual([...again.files], [...res.files], `second run: ${what}`);
+    return res;
+  }
+
   for (let seed = 1; seed <= 25; seed++) {
     test(`generated doc ${seed}: text kept, rules met, a second run changes nothing`, () => {
       const input = generated(seed);
       for (const max of [8, 15, 30, 60, 1000]) {
-        const res = D.fixDoc(input, ctx(max));
-        assert.equal(res.blocked, null);
-        assert.deepEqual(prose(res.files), prose(input), `text changed at maxLines ${max}`);
-        const after = issuesOf(res.files, max);
-        assert.deepEqual(messages(after.filter((x) => x.fixable || x.structural)), [], `at maxLines ${max}`);
-        for (const [name, lines] of res.files) {
-          if (lines.length <= max) continue;
-          assert.ok(
-            after.some((x) => x.file === name && /no (subsections|sections left) to move out/.test(x.message)),
-            `${name} is ${lines.length} lines at maxLines ${max} with nothing reported`,
-          );
-        }
-        const again = D.fixDoc(res.files, ctx(max));
-        assert.deepEqual(again.actions, [], `second run at maxLines ${max}`);
-        assert.deepEqual([...again.files], [...res.files]);
+        const res = settled(input, max, `split at maxLines ${max}`);
+        settled(res.files, max * 4, `split at ${max}, then fixed at ${max * 4}`);
+        settled(shrink(res.files), max, `split at ${max}, then text cut`);
       }
     });
   }
+
+  test('generated docs: when the whole doc fits within two-thirds of the limit, it folds back into README.md alone', () => {
+    let merges = 0;
+    for (let seed = 1; seed <= 25; seed++) {
+      const input = generated(seed);
+      const split = D.fixDoc(input, ctx(8)).files;
+      const joined = D.fixDoc(input, ctx(1e6)).files.get(README).length;
+      const res = D.fixDoc(split, ctx(Math.ceil(joined * 1.5) + 3));
+      assert.deepEqual([...res.files.keys()], [README], `seed ${seed}`);
+      assert.deepEqual(prose(res.files), prose(input), `seed ${seed}`);
+      merges += res.actions.filter((a) => a.startsWith('merged')).length;
+    }
+    assert.ok(merges > 25);
+  });
 });
 
 describe('references', () => {

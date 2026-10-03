@@ -362,19 +362,15 @@ function checkDoc(m, { id, maxLines }) {
 
   for (const s of sortedSections(m)) {
     const p = parentOf(s.anchor);
-    const parent = p && m.sections.get(p);
-    if (p && !parent) {
-      add(s.file, s.i, `§${s.anchor} has no parent: there is no §${p}`, { structural: true });
-    } else if (hasOwnFile(s)) {
-      if (parent && !hasOwnFile(parent)) {
-        add(s.file, s.i, `§${s.anchor} has its own file, but its parent §${p} does not; put §${s.anchor} back into ${parent.file}`, {
-          structural: true,
-        });
-      }
-    } else {
-      const home = parent ? parent.file : README;
-      if (s.file !== home) add(s.file, s.i, `§${s.anchor} belongs in ${home}, with its parent`, { structural: true });
-    }
+    if (p && !m.sections.has(p)) add(s.file, s.i, `§${s.anchor} has no parent: there is no §${p}`, { structural: true });
+  }
+  const astray = misplaced(m);
+  for (const x of astray) {
+    const s = m.sections.get(x.anchor);
+    const why = x.ownFile
+      ? `§${x.anchor} has its own file, but its parent §${parentOf(x.anchor)} does not; fix moves it into ${x.to}`
+      : `§${x.anchor} belongs in ${x.to}, with its parent; fix moves it there`;
+    add(s.file, s.i, why, { fixable: true });
   }
 
   // A section file opens with its breadcrumb, then its own heading. Nothing else goes above.
@@ -400,12 +396,13 @@ function checkDoc(m, { id, maxLines }) {
     }
   }
 
-  // Siblings move out together: once one has its own file, all of them do.
-  for (const kids of siblingGroups(m).values()) {
-    const moved = kids.find(hasOwnFile);
-    if (!moved) continue;
-    for (const s of kids) {
-      if (!hasOwnFile(s)) add(s.file, s.i, `§${s.anchor} needs its own file, like its sibling §${moved.anchor}`, { fixable: true });
+  // A section file small enough to go back where its parent is. Only on a sound doc: the merge
+  // is worked out by building it, which needs every section where it belongs.
+  if (!astray.length && !issues.some((x) => x.structural)) {
+    for (const c of mergeCandidates(m, maxLines)) {
+      add(c.file, undefined, `§${c.anchor} fits back into ${c.home}, ${c.lines} lines together, within ${packTarget(maxLines)}; fix merges it`, {
+        fixable: true,
+      });
     }
   }
 
@@ -422,7 +419,7 @@ function checkDoc(m, { id, maxLines }) {
     const inline = inlineChildren(m, f.name, owner);
     const what = `${f.lines.length} lines, over the ${maxLines}-line limit`;
     if (inline.length) {
-      add(f.name, undefined, `${what}; fix moves its ${inline.length} ${owner ? 'subsections' : 'sections'} into their own files`, {
+      add(f.name, undefined, `${what}; fix moves its largest ${owner ? 'subsections' : 'sections'} into their own files`, {
         fixable: true,
       });
     } else if (owner) {
@@ -435,36 +432,117 @@ function checkDoc(m, { id, maxLines }) {
   return issues;
 }
 
-function siblingGroups(m) {
-  const groups = new Map();
-  for (const s of sortedSections(m)) {
-    const p = parentOf(s.anchor) ?? '';
-    if (!groups.has(p)) groups.set(p, []);
-    groups.get(p).push(s);
-  }
-  return groups;
-}
-
 // The direct subsections still inside a file. owner is null for README.md, whose children are
 // the top-level sections.
 function inlineChildren(m, fileName, owner) {
   return sortedSections(m).filter((s) => s.file === fileName && s.anchor !== owner && parentOf(s.anchor) === owner);
 }
 
-// ---------------------------------------------------------------- fix
+// ---------------------------------------------------------------- layout
 
-// The next section to move into its own file: a sibling of one already moved, or else the first
-// subsection of a file over the limit — whose siblings then follow by the first rule.
-function nextMove(m, maxLines) {
-  for (const kids of siblingGroups(m).values()) {
-    if (!kids.some(hasOwnFile)) continue;
-    const s = kids.find((k) => !hasOwnFile(k));
-    if (s) return s.anchor;
+// Two-thirds of the limit: where a split stops, and how far a merge may fill a file. A file is
+// split only once it is over the limit, and merged into only while it stays within two-thirds, so
+// neither undoes the other, and a few lines more or less do not move sections back and forth.
+const packTarget = (maxLines) => Math.floor((maxLines * 2) / 3);
+
+// The file that holds a section's parent: where the section goes when it has no file of its own.
+function homeOf(m, anchor) {
+  const parent = m.sections.get(parentOf(anchor) || '');
+  return parent ? parent.file : README;
+}
+
+// Sections out of place: one written into a file other than its parent's, and one with a file of
+// its own while its parent has none. The first kind comes first, so that a section file holds
+// nothing but its own section by the time it is merged away.
+function misplaced(m) {
+  const inline = [];
+  const own = [];
+  for (const s of sortedSections(m)) {
+    const p = parentOf(s.anchor);
+    const parent = p && m.sections.get(p);
+    if (p && !parent) continue;
+    const to = homeOf(m, s.anchor);
+    if (!hasOwnFile(s)) {
+      if (s.file !== to) inline.push({ anchor: s.anchor, to, ownFile: false });
+    } else if (parent && !hasOwnFile(parent)) {
+      own.push({ anchor: s.anchor, to, ownFile: true });
+    }
   }
+  return [...inline, ...own];
+}
+
+// A section — with whatever subsections sit inside it — cut from its file and put into `to`, in
+// anchor order: before the first section there that comes after it, else after the last one that
+// comes before it. Returns the new lines of both files, without changing either. `from` is null
+// when nothing but a breadcrumb would be left: the section had the file to itself.
+function relocated(m, anchor, to) {
+  const s = m.sections.get(anchor);
+  const src = m.files.get(s.file);
+  const end = rangeEnd(src, s);
+  const text = trimEnd(src.lines.slice(s.i, end));
+  const left = trimEnd([...src.lines.slice(0, s.i), ...src.lines.slice(end)]);
+  const from = left.every((line, i) => isBlank(line) || (i === 0 && BREADCRUMB_RE.test(line))) ? null : left;
+
+  const dest = m.files.get(to);
+  const sections = dest.headings.filter((h) => h.section);
+  const later = sections.find((h) => compareAnchors(h.section.anchor, anchor) > 0);
+  const earlier = sections.filter((h) => compareAnchors(h.section.anchor, anchor) < 0).pop();
+  let at = dest.lines.length;
+  if (later) at = later.i;
+  else if (earlier) at = rangeEnd(dest, { i: earlier.i, anchor: earlier.section.anchor });
+  const before = dest.lines.slice(0, at);
+  const after = dest.lines.slice(at);
+  while (before.length && isBlank(before[before.length - 1])) before.pop();
+  while (after.length && isBlank(after[0])) after.shift();
+  const into = [...before, ...(before.length ? [''] : []), ...text, ...(after.length ? ['', ...after] : [])];
+  return { from, into };
+}
+
+function moveInto(files, m, anchor, to) {
+  const s = m.sections.get(anchor);
+  const { from, into } = relocated(m, anchor, to);
+  if (from) files.set(s.file, from);
+  else files.delete(s.file);
+  files.set(to, into);
+}
+
+// The section files fix merges back, best first: a file with no section files below it, whose
+// text fits into the file that holds its parent with that file staying within two-thirds of the
+// limit, measured by building the merge. Deepest first, so a subtree folds back up one level at a
+// time; then the shortest, so as many go back as fit.
+function mergeCandidates(m, maxLines) {
+  const target = packTarget(maxLines);
+  const sectionFiles = [...m.files.values()].filter((f) => f.anchor);
+  const out = [];
+  for (const f of sectionFiles) {
+    const s = m.sections.get(f.anchor);
+    if (!s || !hasOwnFile(s) || sectionFiles.some((g) => isWithin(g.anchor, f.anchor))) continue;
+    const home = homeOf(m, f.anchor);
+    if (!m.files.has(home)) continue;
+    const { into } = relocated(m, f.anchor, home);
+    if (into.length <= target) out.push({ anchor: f.anchor, file: f.name, home, lines: into.length, size: f.lines.length });
+  }
+  return out.sort((a, b) => depthOf(b.anchor) - depthOf(a.anchor) || a.size - b.size || compareAnchors(a.anchor, b.anchor));
+}
+
+// The next section to move into a file of its own: the largest subsection still inside a file
+// being split. A file starts being split when it goes over the limit, and goes on until it is
+// within two-thirds of it — or, when the section's own text alone is longer than that, until it
+// is within the limit. `splitting` carries that state from one move to the next.
+function nextMove(m, maxLines, splitting) {
   for (const f of orderFiles(m.files)) {
-    if (f.lines.length <= maxLines || f.anchor === undefined) continue;
-    const [kid] = inlineChildren(m, f.name, f.anchor);
-    if (kid) return kid.anchor;
+    if (f.anchor === undefined) continue;
+    if (f.lines.length > maxLines) splitting.add(f.name);
+    if (!splitting.has(f.name)) continue;
+    const kids = inlineChildren(m, f.name, f.anchor).map((s) => ({ s, size: rangeEnd(f, s) - s.i }));
+    const own = f.lines.length - kids.reduce((n, k) => n + k.size, 0);
+    const target = own <= packTarget(maxLines) ? packTarget(maxLines) : maxLines;
+    if (f.lines.length <= target || !kids.length) {
+      splitting.delete(f.name);
+      continue;
+    }
+    kids.sort((a, b) => b.size - a.size || compareAnchors(a.s.anchor, b.s.anchor));
+    return kids[0].s.anchor;
   }
   return null;
 }
@@ -480,6 +558,8 @@ function moveOut(files, m, anchor, id) {
   files.set(s.file, trimEnd([...lines.slice(0, s.i), ...lines.slice(end)]));
   files.set(name, [renderBreadcrumb(m, anchor, id), '', ...trimEnd(lines.slice(s.i, end))]);
 }
+
+// ---------------------------------------------------------------- fix
 
 function applyBreadcrumbs(files, m, id) {
   for (const f of m.files.values()) {
@@ -527,9 +607,10 @@ function applyIndex(files, m) {
   else files.set(README, [...trimEnd(lines), '', '## Index', '', ...block]);
 }
 
-// Everything fix repairs, in one pass: heading levels, then moves, with the breadcrumbs and the
-// index regenerated before every size check, since both count towards a file's lines.
-// Returns the new files and what changed, or the structural issues that stopped it.
+// Everything fix repairs, in one pass: heading levels; then, one at a time, sections out of place,
+// section files that fit back, and sections out of files that are too long, in that order, with
+// the breadcrumbs and the index regenerated before every step, since both count towards a file's
+// lines. Returns the new files and what changed, or the structural issues that stopped it.
 function fixDoc(input, ctx) {
   const files = new Map([...input].map(([name, lines]) => [name, [...lines]]));
   let m = buildModel(files);
@@ -547,22 +628,38 @@ function fixDoc(input, ctx) {
   }
   if (levels) actions.push(`set ${levels} heading level${levels === 1 ? '' : 's'} from section depth`);
 
-  const moves = new Map();
+  const placed = new Map();
+  const merged = new Map();
+  const moved = new Map();
+  const note = (map, key, anchor) => map.set(key, [...(map.get(key) || []), anchor]);
+  const splitting = new Set();
   for (;;) {
     m = buildModel(files);
     applyBreadcrumbs(files, m, ctx.id);
     applyIndex(files, buildModel(files));
     m = buildModel(files);
-    const next = nextMove(m, ctx.maxLines);
+    const [astray] = misplaced(m);
+    if (astray) {
+      note(placed, astray.to, astray.anchor);
+      moveInto(files, m, astray.anchor, astray.to);
+      continue;
+    }
+    const [back] = mergeCandidates(m, ctx.maxLines);
+    if (back) {
+      note(merged, back.home, back.anchor);
+      moveInto(files, m, back.anchor, back.home);
+      continue;
+    }
+    const next = nextMove(m, ctx.maxLines, splitting);
     if (!next) break;
-    const from = m.sections.get(next).file;
-    if (!moves.has(from)) moves.set(from, []);
-    moves.get(from).push(next);
+    note(moved, m.sections.get(next).file, next);
     moveOut(files, m, next, ctx.id);
   }
-  for (const [from, anchors] of moves) {
-    actions.push(`moved ${anchors.map((a) => `§${a}`).join(', ')} out of ${from} into their own files`);
-  }
+  const list = (anchors) => [...anchors].sort(compareAnchors).map((a) => `§${a}`).join(', ');
+  const one = (anchors, single, plural) => (anchors.length === 1 ? single : plural);
+  for (const [to, anchors] of placed) actions.push(`moved ${list(anchors)} into ${to}, where ${one(anchors, 'its parent is', 'their parents are')}`);
+  for (const [to, anchors] of merged) actions.push(`merged ${list(anchors)} back into ${to}`);
+  for (const [from, anchors] of moved) actions.push(`moved ${list(anchors)} out of ${from} into ${one(anchors, 'its own file', 'their own files')}`);
 
   const crumbs = [...input.keys()].filter(
     (name) => SECTION_FILE_RE.test(name) && files.has(name) && files.get(name)[0] !== input.get(name)[0],

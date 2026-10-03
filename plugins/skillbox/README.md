@@ -113,12 +113,13 @@ area. At the end of a task that changed code, the skill corrects what the change
 records the architecture it added — and writes nothing for a bug fix, a refactor or a field.
 
 Each SDD is a folder, `SDDnnn-<slug>/`, whose `README.md` holds the abstract and a generated index.
-When a file passes `sdd.maxLines`, its subsections move into files named for their anchors, so the
-agent always reads whole files instead of grepping a long one. References are ids, `SDD001§3.2`,
-never paths, so nothing breaks when a file splits.
+When a file passes `sdd.maxLines`, its largest subsections move into files named for their anchors,
+and a section file that fits back into its parent's is merged back, so the agent always reads whole
+files instead of grepping a long one. References are ids, `SDD001§3.2`, never paths, so nothing
+breaks when files split or merge.
 
-The plugin's Stop hook checks the SDDs changed in a turn before the turn ends, and sends problems
-back to the agent. It does nothing in a repository whose config names no `paths.sddRoot`, and on
+The plugin's Stop hook, Claude Code only, checks the SDDs changed in a turn before the turn ends,
+and sends problems back to the agent. It does nothing in a repository whose config names no `paths.sddRoot`, and on
 first use the skill proposes the `CLAUDE.md` or `AGENTS.md` lines that make sessions read and
 update SDDs at all. [The skill's README](skills/to-sdd/README.md) has the format, the bar and the
 script, which ships inside the skill folder.

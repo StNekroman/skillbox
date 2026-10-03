@@ -2,7 +2,7 @@
 name: to-sdd
 description: Keep the repository’s SDDs — the agent-written memory of how each feature area works — true after a code change. Corrects the sections a change made wrong, adds sections for new architecture, creates an SDD for an area none covers, and keeps each file under the size limit. Writes nothing when the change is below the bar. Use at the end of a task that changed code, or when asked to create, update or migrate SDDs; do not use for ADRs, tickets or code comments.
 metadata:
-  prompt-version: "2026-10-01.2"
+  prompt-version: "2026-10-03.1"
 ---
 
 # Keep the SDDs true
@@ -136,11 +136,11 @@ After the abstract, the README may hold a few short lines, such as a note on how
 
 ### Files
 
-`fix` owns the file layout, and it follows one rule. When a file goes over `sdd.maxLines`, every direct subsection of the section it holds moves into its own file, named for its anchor: `3.md`, `3.2.md`. Sibling sections always move together. Files are never merged back, so no path ever moves.
+`fix` owns the file layout. When a file goes over `sdd.maxLines`, its largest subsections move into files of their own, named for their anchors (`3.md`, `3.2.md`), until the file is within two-thirds of the limit. The small ones stay with their parent. A section file that would fit back into its parent's file, keeping that file within two-thirds of the limit, is merged back. So a section lives in `<anchor>.md`, or else in the file of its nearest parent section that has one.
 
 - **Never create, rename, move or merge a section file by hand.** Never edit a breadcrumb, the first line of a section file.
 - **To edit a section,** open the file its index entry links, or search the folder for the heading: `^#+ §3\.2 `.
-- **To add a section,** write it at the end of its parent's text, after the parent's last subsection. That spot is in the file that holds the parent. For a new top-level section, it is the end of `README.md`. `fix` moves the new section into its own file if its siblings have theirs.
+- **To add a section,** write it at the end of its parent's text, after the parent's last subsection, in the file that holds the parent. For a new top-level section, that is the end of `README.md`. `fix` moves it into a file of its own when the file goes over the limit, and moves it where it belongs if it landed in the wrong file.
 - **A section with no subsections can go over the limit,** and `fix` cannot split it. Divide it into nested sections, one heading per part, then run `fix` again.
 
 ## References
@@ -148,7 +148,7 @@ After the abstract, the README may hold a few short lines, such as a note on how
 - **Outside an SDD's own files, write the full form every time:** `SDD006§2.4.1`. In a list, write `SDD006§2.4.1, SDD006§12`, never `SDD006§2.4.1/§12`. Write `SDD006§8.1.2`, never "§8.1.2 of SDD006" or `SDD006 §8.1.2`. A search for `SDD006§12` has to find every line that cites it.
 - **Inside an SDD's own files,** a bare `§3.2` means a section of that SDD. Another SDD takes its id every time, `SDD004§1.3`: a bare § right after another SDD's reference, in the same list, is read as that SDD's section. A document outside the repository keeps its own name, `RFC 9110 §15`, and is not checked.
 - **A § is followed by a section number.** A label in its place, such as `SDD013§P6` for a project phase, finds no heading.
-- **Never cite an SDD by a file path or a markdown link.** The id never moves; a path moves when a file splits.
+- **Never cite an SDD by a file path or a markdown link.** The id never moves; a path moves when files split or merge.
 - **Cite the section in the code.** When a new section describes code that did not cite an SDD before, add one reference, `SDDnnn§x.y`, in a comment at that code's entry point. That reference is how the next change to that code finds the section. One per entry point is enough; do not cite on every function.
 - **Link the ADR behind a design choice** when the repository has one. Put a relative path in the section that describes the choice. Leave the reasons to the ADR and do not restate them.
 
@@ -169,7 +169,7 @@ After the abstract, the README may hold a few short lines, such as a note on how
 
 ## The script
 
-It is `scripts/sdd-check.js` in this skill's folder. Run it from the repository root. The Stop hook runs it too.
+It is `scripts/sdd-check.js` in this skill's folder. Run it from the repository root. In Claude Code, the plugin's Stop hook runs it too.
 
 ```bash
 node "${CLAUDE_SKILL_DIR}/scripts/sdd-check.js" <command>
@@ -181,7 +181,7 @@ node "${CLAUDE_SKILL_DIR}/scripts/sdd-check.js" <command>
 |---|---|
 | `refs --changed` | Step 4: the sections that changed code cites |
 | `next` | Before creating an SDD: the id it takes |
-| `fix SDDnnn …` | After writing. It regenerates the index and breadcrumbs, sets heading levels, and moves sections out of files over the limit. It rewrites files, so read a file again before editing it further |
+| `fix SDDnnn …` | After writing. It regenerates the index and breadcrumbs, sets heading levels, puts sections where they belong, merges back section files that fit, and moves the largest sections out of files over the limit. It rewrites, creates and deletes files, so read a file again before editing it further |
 | `check SDDnnn …` | After `fix`. It runs every rule, including references to those SDDs from anywhere in the repository |
 | `lint SDDnnn …` | After `check`. Leads for the `Content` rules, all warnings: wording that tells history, fenced code, and names in backticks that the code no longer has |
 | `migrate --dry-run`, `migrate` | First run only: single-file SDDs into folders, and references into the full form |
@@ -202,14 +202,16 @@ node "${CLAUDE_SKILL_DIR}/scripts/sdd-check.js" <command>
 
 ### The Stop hook
 
-The Stop hook runs the same rules at the end of every turn, on the SDDs changed since `HEAD`. When it sends the turn back, do what it says: run the `fix` command it prints, or repair the lines it lists.
+The hook exists only where this skill is installed as part of the Claude Code plugin. There it runs the same rules at the end of every turn, on the SDDs changed since `HEAD`. When it sends the turn back, do what it says: run the `fix` command it prints, or repair the lines it lists.
+
+Without the hook, nothing checks the SDDs after you. Step 8 is then the only check, so never skip it.
 
 ## Finish
 
 Report to the user:
 
 - **each SDD touched**, as a clickable link to its `README.md`, with what changed: the sections added, corrected or removed. Put a new SDD first, and mark it as new;
-- **what `fix` did**, if it moved sections into new files;
+- **what `fix` did**, if it moved sections between files;
 - **anything `check` still reports**;
 - **what fell below the bar**, one clause each, so a wrong call can be corrected in one line.
 

@@ -192,6 +192,25 @@ describe('fix', () => {
     assert.equal(run(root, ['check']).status, 0);
   });
 
+  test('merges back the section files that fit, and deletes them; a dry run deletes nothing', (t) => {
+    const small = (n) => section(String(n), `Part ${n}`, body(`p${n}`, 2));
+    const split = folderDoc('docs/sdd/SDD001-mail', readme('SDD001', 'Mail', [small(1), section('2', 'Big', body('big', 30)), small(3)].flat()), 10);
+    const root = repo(t, split);
+    const dir = path.join(root, 'docs/sdd/SDD001-mail');
+    assert.deepEqual(fs.readdirSync(dir).sort(), ['1.md', '2.md', '3.md', 'README.md']);
+
+    const dry = run(root, ['fix', '--dry-run']);
+    assert.equal(dry.status, 0, dry.stdout);
+    assert.match(dry.stdout, /^SDD001: merged §1, §3 back into README\.md; regenerated the index\.$/m);
+    assert.deepEqual(fs.readdirSync(dir).sort(), ['1.md', '2.md', '3.md', 'README.md']);
+
+    const r = run(root, ['fix']);
+    assert.equal(r.status, 0, r.stdout);
+    assert.deepEqual(fs.readdirSync(dir).sort(), ['2.md', 'README.md']);
+    assert.match(read(root, 'docs/sdd/SDD001-mail/README.md'), /^## §3 Part 3\n\np3 line 1\.\np3 line 2\.\n$/m);
+    assert.equal(run(root, ['check']).status, 0);
+  });
+
   test('leaves a doc with a structural problem untouched, and says what to repair first', (t) => {
     const broken = readme('SDD001', 'Mail', [...section('1', 'Overview'), ...section('2.1', 'Orphan')]);
     const root = repo(t, { 'docs/sdd/SDD001-mail/README.md': broken });

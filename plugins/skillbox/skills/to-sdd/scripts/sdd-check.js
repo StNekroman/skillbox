@@ -2,8 +2,9 @@
 // Checks and repairs the repository's SDD docs, and runs as the plugin's Stop hook.
 // Usage: node <skill>/scripts/sdd-check.js <command> [SDDnnn ...] [--dry-run]
 //   check [SDDnnn ...]          every rule, references from code included; exit 1 on an error
-//   fix [SDDnnn ...]            regenerate indexes and breadcrumbs, set heading levels, move
-//                               sections of files over the limit into their own files; then check
+//   fix [SDDnnn ...]            regenerate indexes and breadcrumbs, set heading levels, put
+//                               sections where they belong, merge back section files that fit,
+//                               move the largest sections out of files over the limit; then check
 //   migrate                     move single-file SDDs into folders, turn links to them into ids,
 //                               expand short-form references across the repository; then fix
 //   lint [SDDnnn ...]           content leads for the agent, all warnings: wording that tells
@@ -338,12 +339,16 @@ function cmdCheck(cfg, args) {
   return report(collectIssues(cfg, docs, select(docs, args), citingFiles(cfg, docs)));
 }
 
+// Writes the files that changed, and deletes those fix merged away.
 function writeDocFiles(dir, files, before, eol) {
   fs.mkdirSync(dir, { recursive: true });
   for (const [name, lines] of files) {
     const old = before && before.get(name);
     if (old && old.length === lines.length && old.every((l, i) => l === lines[i])) continue;
     fs.writeFileSync(path.join(dir, name), D.joinLines(lines, eol(name)));
+  }
+  for (const name of before ? before.keys() : []) {
+    if (!files.has(name)) fs.unlinkSync(path.join(dir, name));
   }
 }
 

@@ -69,8 +69,10 @@ The scripts are importable for this reason: `main()` runs only under `require.ma
 failure throws `CliError` instead of exiting, which `runMain` turns into the printed error.
 
 `sdd-doc.test.js` covers the SDD model directly, including 25 generated docs run through `fix` at
-five limits each: every line of text must survive in order, nothing `fix` could still repair may
-remain, and a second run must change nothing. `sdd-check.test.js` runs `sdd-check.js` end to end in
+five limits each — split from one file, then merged back at four times the limit and again with
+their text cut: every line of text must survive in reading order, nothing `fix` could still
+repair may remain, and a second run must change nothing. A doc that fits within two-thirds of the
+limit must fold back into `README.md` alone. `sdd-check.test.js` runs `sdd-check.js` end to end in
 throwaway git repositories — as the skill runs it, and as the Stop hook does, with hook input on
 stdin. Tests that need git are skipped where it is not installed.
 
@@ -83,6 +85,15 @@ are in the [to-sdd README](../skills/to-sdd/README.md); these matter here.
 **`fix` refuses rather than guesses.** A doc with a structural problem — an anchor defined twice, a
 section with no parent, an unnumbered heading at section level — is left untouched, because moving
 text around it could misplace some. Everything else it repairs is mechanical and idempotent.
+
+**The layout is settled one move at a time, by size.** Each step rebuilds the model and takes the
+first move that applies: a section out of place goes to the file that holds its parent; a section
+file with none below it goes back into its parent's file when the result stays within two-thirds
+of `sdd.maxLines`; the largest inline subsection leaves a file being split. A file starts being
+split when it passes the limit and goes on down to two-thirds — or to the limit, when the
+section's own text alone is longer than two-thirds. Because a split begins only above the limit
+and a merge may fill only to two-thirds, and the merge is measured by building it rather than
+estimated, neither can undo the other, and the run ends.
 
 **One grammar for references, shared by `check` and `migrate`.** `findRefs` in `lib/sdd-doc.js`
 reads every way a § can borrow the id before it: a list joined by commas, slashes, dashes, `and`
@@ -161,8 +172,8 @@ A Claude Code upgrade is the likeliest thing to break this.
 ## What they write
 
 `sdd-check.js` writes only inside the repository it runs in, and only for `fix` and `migrate`
-without `--dry-run`: SDD files, and — for `migrate` — the files whose links and references it
-rewrites. It never stages or commits. The hook, `check`, `lint`, `refs` and `next` write nothing.
+without `--dry-run`: SDD files — `fix` also deletes the section files it merges back — and, for
+`migrate`, the files whose links and references it rewrites. It never stages or commits. The hook, `check`, `lint`, `refs` and `next` write nothing.
 
 The fork scripts write in the config directory, all additive and safe to delete:
 

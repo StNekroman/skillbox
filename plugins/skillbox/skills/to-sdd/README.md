@@ -25,21 +25,26 @@ Each SDD is a folder under `paths.sddRoot`:
 docs/sdd/
   SDD001-email-notifications/
     README.md     ← title, an abstract of at most 500 characters, the generated index,
-                    and every section not moved out yet
-    3.md          ← §3, moved out when README.md passed the size limit
+                    and every section not moved out — §1, §2 and §4 here
+    3.md          ← §3, the largest, moved out when README.md passed the size limit,
+                    with its small subsections
     3.2.md        ← §3.2, moved out when 3.md passed it
 ```
 
 - **Sections are headings that carry their anchor** — `### §3.2 Retries with backoff` — so a
   reference like `SDD001§3.2` finds its heading wherever it lives, with one grep.
 - **References are always ids, never paths**: `SDD001§3.2` in code, in other SDDs, in tickets and
-  ADRs, always in the full form. An id never moves; a path would move the moment a file splits.
+  ADRs, always in the full form. An id never moves; a path moves whenever files split or merge.
 - **Numbers are frozen; text is not.** A section is never renumbered and a number never reused. Its
   text is rewritten in place whenever it stops being true. A removed section keeps its heading,
   titled `(removed; see §3.6)`.
-- **Files split by one fixed rule.** When a file passes `sdd.maxLines`, every direct subsection of
-  the section it holds moves into its own file, named for its anchor. Siblings move together, and
-  files are never merged back, so no path ever moves. A small SDD stays one `README.md`.
+- **Files split and merge by size.** When a file passes `sdd.maxLines`, its largest subsections
+  move into files of their own, named for their anchors, until it is within two-thirds of the
+  limit; small ones stay with their parent, so no file is a stub. A section file that would fit
+  back into its parent's file within two-thirds of the limit is merged back. Splitting only above
+  the limit and merging only up to two-thirds of it means neither undoes the other, and a few
+  lines of editing do not move sections around. A section lives in `<anchor>.md`, or else in the
+  file of its nearest parent section that has one. A small SDD stays one `README.md`.
 - **Generated, never hand-written**: the index in `README.md`, the breadcrumb at the top of each
   section file, heading levels. The index links each section to the file holding it, so one read of
   `README.md` is a map of the whole SDD.
@@ -71,7 +76,7 @@ its internals and tests are documented in the plugin's
 | Command | What |
 |---|---|
 | `check [SDDnnn …]` | Every rule, including every reference to an SDD anywhere in the repository |
-| `fix [SDDnnn …]` | Regenerates indexes and breadcrumbs, sets heading levels, splits files over the limit |
+| `fix [SDDnnn …]` | Regenerates indexes and breadcrumbs, sets heading levels, puts misplaced sections where they belong, merges back section files that fit, splits files over the limit |
 | `lint [SDDnnn …]` | Leads for the content rules, all warnings: wording that tells history, fenced code, names in backticks the code no longer has |
 | `refs --changed` | The sections the changed code cites — how the skill finds what a change may have made wrong |
 | `next` | The id a new SDD takes, counting every number in git history, deleted ones included |
