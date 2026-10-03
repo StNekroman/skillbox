@@ -1,4 +1,4 @@
-// Builders for SDD docs in tests: markdown in the shape the SDD rules describe.
+// Builders for docs in tests: markdown in the shape the doc rules describe.
 
 // n distinct lines, so a test can tell whose text ended up where.
 function body(tag, n = 1) {

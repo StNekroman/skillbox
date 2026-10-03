@@ -4,18 +4,20 @@ The implementation behind `/skillbox:fork-at` and `/skillbox:fork-tree`, and the
 script in the plugin. The command files in `../commands/` invoke the fork scripts through
 `${CLAUDE_PLUGIN_ROOT}`.
 
-The SDD checker behind the `to-sdd` skill and the Stop hook lives in the skill, in
-`../skills/to-sdd/scripts/`, so that the skill folder works when it is installed on its own. It
-requires nothing from here. The skill runs it through `${CLAUDE_SKILL_DIR}`, and
-`../hooks/hooks.json` through `${CLAUDE_PLUGIN_ROOT}`. It is documented here with the rest.
+The doc checker behind the `to-sdd` skill and the Stop hook has its one editable source here, in
+`doc-check/`. Each skill that runs it carries an identical copy in its own `scripts/`, so that the
+skill folder works when it is installed on its own; `npm run sync` writes the copies from the
+source, and `npm test` fails while one differs. Edit the source, never a copy. A skill runs its
+copy through `${CLAUDE_SKILL_DIR}`; `../hooks/hooks.json` runs the source through
+`${CLAUDE_PLUGIN_ROOT}`. The checker requires nothing from outside `doc-check/`.
 
 | File | What |
 |---|---|
 | `fork-at.js` | Resolves a cut point and opens a window at once; in that window, creates the child with one headless turn and resumes it |
 | `fork-tree.js` | Renders the fork tree; interactive picker when run from a TTY |
 | `lib/fork-graph.js` | Shared: transcript reading, edge collection, session metadata, terminal launching |
-| `../skills/to-sdd/scripts/sdd-check.js` | SDD checks and repairs — `check`, `fix`, `migrate`, `lint`, `refs`, `next` — and the Stop hook, `hook`. Disk and git work only |
-| `../skills/to-sdd/scripts/lib/sdd-doc.js` | The SDD model, pure: parsing a doc, the rules, the mechanical repairs, finding references, the content leads |
+| `doc-check/doc-check.js` | SDD checks and repairs — `check`, `fix`, `migrate`, `lint`, `refs`, `next` — and the Stop hook, `hook`. Disk and git work only |
+| `doc-check/lib/doc-model.js` | The SDD model, pure: parsing a doc, the rules, the mechanical repairs, finding references, the content leads |
 | `test/` | Unit and end-to-end tests for all of the above, run with Node's built-in runner |
 
 Run them directly for things a slash command cannot do — `fork-tree.js` from a real terminal gets
@@ -67,7 +69,7 @@ No dependencies — Node's built-in runner, 21 or later. From the repository roo
 ```bash
 npm test            # everything
 npm run test:fork   # fork-at, fork-tree and their CLI
-npm run test:sdd    # the SDD checker
+npm run test:doc    # the doc checker, and that the skills' copies match it
 ```
 
 The root `package.json` holds only these scripts; nothing needs installing. Each runs
@@ -82,17 +84,17 @@ background process, so no window opens and no model is called.
 The scripts are importable for this reason: `main()` runs only under `require.main === module`, and a
 failure throws `CliError` instead of exiting, which `runMain` turns into the printed error.
 
-`sdd-doc.test.js` covers the SDD model directly, including 25 generated docs run through `fix` at
+`doc-model.test.js` covers the SDD model directly, including 25 generated docs run through `fix` at
 five limits each — split from one file, then merged back at four times the limit and again with
 their text cut: every line of text must survive in reading order, nothing `fix` could still
 repair may remain, and a second run must change nothing. A doc that fits within two-thirds of the
-limit must fold back into `README.md` alone. `sdd-check.test.js` runs `sdd-check.js` end to end in
+limit must fold back into `README.md` alone. `doc-check.test.js` runs `doc-check.js` end to end in
 throwaway git repositories — as the skill runs it, and as the Stop hook does, with hook input on
 stdin. Tests that need git are skipped where it is not installed.
 
 ## The SDD checker
 
-`sdd-check.js` finds the repository by walking up to `.skillbox/tickets.json`, and reads
+`doc-check.js` finds the repository by walking up to `.skillbox/tickets.json`, and reads
 `paths.sddRoot` and `sdd.maxLines` from it. The split rule, the formats and the reasons behind them
 are in the [to-sdd README](../skills/to-sdd/README.md); these matter here.
 
@@ -109,7 +111,7 @@ section's own text alone is longer than two-thirds. Because a split begins only 
 and a merge may fill only to two-thirds, and the merge is measured by building it rather than
 estimated, neither can undo the other, and the run ends.
 
-**One grammar for references, shared by `check` and `migrate`.** `findRefs` in `lib/sdd-doc.js`
+**One grammar for references, shared by `check` and `migrate`.** `findRefs` in `lib/doc-model.js`
 reads every way a § can borrow the id before it: a list joined by commas, slashes, dashes, `and`
 or `or`, read past a parenthesised label without a § (`SDD005§8.6 (dialog), §8.2`); parentheses
 straight after a bare id (`SDD001 (esp. §7)`); a § after a space (`SDD007 §8`). `check` reports
@@ -196,7 +198,7 @@ A Claude Code upgrade is the likeliest thing to break this.
 
 ## What they write
 
-`sdd-check.js` writes only inside the repository it runs in, and only for `fix` and `migrate`
+`doc-check.js` writes only inside the repository it runs in, and only for `fix` and `migrate`
 without `--dry-run`: SDD files — `fix` also deletes the section files it merges back — and, for
 `migrate`, the files whose links and references it rewrites. It never stages or commits. The hook, `check`, `lint`, `refs` and `next` write nothing.
 

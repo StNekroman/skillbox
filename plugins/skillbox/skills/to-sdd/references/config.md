@@ -9,7 +9,7 @@ it. Never remove or rewrite a key this skill does not use. The file is named for
 where SDDs live is one more of the repository's document paths, and `jira-push-ticket` has to know
 them all to rewrite links inside them, so one file answers every path question.
 
-`scripts/sdd-check.js` reads the same file, and finds the repository by walking up to it. The Stop
+`scripts/doc-check.js` reads the same file, and finds the repository by walking up to it. The Stop
 hook that runs the script does nothing in a repository whose file names no `paths.sddRoot`.
 
 ## The keys this skill uses
@@ -30,7 +30,7 @@ hook that runs the script does nothing in a repository whose file names no `path
 | Key | Meaning |
 |---|---|
 | `paths.sddRoot` | Where SDD folders live, relative to the repository root. Read by this skill, the script and the Stop hook |
-| `sdd.maxLines` | The most lines one SDD file may hold before `sdd-check.js fix` moves its subsections into files of their own. No default: the init writes it |
+| `sdd.maxLines` | The most lines one SDD file may hold before `doc-check.js fix` moves its subsections into files of their own. No default: the init writes it |
 | `paths.docRoots` | Directories searched for inbound references to a ticket draft when it is pushed to a tracker. This skill only adds `sddRoot` to it |
 
 ## When the file or a key is missing
@@ -59,7 +59,7 @@ directories you found on the way. An SDD that cites a ticket draft is an inbound
 `jira-push-ticket` must rewrite, and it searches only `docRoots`.
 
 Write `sdd.maxLines` as `500` without asking, and say in the one-line report that it is there to
-tune. Never leave it out: `sdd-check.js` has no default, so that the limit in force is always the
+tune. Never leave it out: `doc-check.js` has no default, so that the limit in force is always the
 one written in the file. A lower value later splits the files over it; a higher one merges nothing
 back, since no path may move.
 

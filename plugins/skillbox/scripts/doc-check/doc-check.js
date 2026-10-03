@@ -1,17 +1,21 @@
 #!/usr/bin/env node
-// Checks and repairs the repository's SDD docs, and runs as the plugin's Stop hook.
-// Usage: node <skill>/scripts/sdd-check.js <command> [SDDnnn ...] [--dry-run]
-//   check [SDDnnn ...]          every rule, references from code included; exit 1 on an error
-//   fix [SDDnnn ...]            regenerate indexes and breadcrumbs, set heading levels, put
+// Source: plugins/skillbox/scripts/doc-check/. The copies under plugins/skillbox/skills/*/scripts/
+// are written by `npm run sync`; edit the source, never a copy.
+//
+// Checks and repairs the repository's docs — every type in TYPES of lib/doc-model.js — and runs
+// as the plugin's Stop hook.
+// Usage: node doc-check.js <command> [ID ...] [--dry-run]
+//   check [ID ...]              every rule, references from code included; exit 1 on an error
+//   fix [ID ...]                regenerate indexes and breadcrumbs, set heading levels, put
 //                               sections where they belong, merge back section files that fit,
 //                               move the largest sections out of files over the limit; then check
 //   migrate                     move single-file SDDs into folders, turn links to them into ids,
 //                               expand short-form references across the repository; then fix
-//   lint [SDDnnn ...]           content leads for the agent, all warnings: wording that tells
+//   lint [ID ...]               content leads for the agent, all warnings: wording that tells
 //                               history, copied code, names in backticks the code no longer has
-//   refs --changed | <file ...> the SDD sections that changed files, or the given files, cite
-//   next                        the id a new SDD takes
-//   hook                        the Stop hook: reads the hook input on stdin, checks the SDDs
+//   refs --changed | <file ...> the sections that changed files, or the given files, cite
+//   next [PREFIX]               the id a new doc takes
+//   hook                        the Stop hook: reads the hook input on stdin, checks the docs
 //                               changed since HEAD, prints a reply that sends the problems back
 //   --dry-run (fix, migrate) prints what would change and writes nothing.
 
@@ -19,14 +23,14 @@ const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
 
-const D = require('./lib/sdd-doc');
+const D = require('./lib/doc-model');
 
 const CONFIG = path.join('.skillbox', 'tickets.json');
 const CONFIG_NAME = '.skillbox/tickets.json';
 const MAX_TEXT_BYTES = 2 * 1024 * 1024;
 
-// The same two as in the plugin's scripts/lib/fork-graph.js, copied rather than required: the
-// to-sdd skill folder has to work when it is installed on its own.
+// The same two as in the plugin's scripts/lib/fork-graph.js, copied rather than required: a skill
+// folder holding this script has to work when it is installed on its own.
 class CliError extends Error {}
 
 function runMain(main) {
@@ -58,6 +62,8 @@ function findRoot(start) {
   }
 }
 
+// One kind per doc type whose root the config names, in TYPES order: the type, where its docs
+// live, and its line limit.
 function loadConfig(root) {
   let raw;
   try {
@@ -65,30 +71,44 @@ function loadConfig(root) {
   } catch (e) {
     fail(`cannot read ${CONFIG_NAME}: ${e.message}`);
   }
-  const sddRoot = raw && raw.paths && raw.paths.sddRoot;
-  const maxLines = raw && raw.sdd ? raw.sdd.maxLines : undefined;
-  // Resolved and made relative again, so `./docs/sdd`, `docs\sdd/` and `docs/sdd` all compare
-  // equal to the paths git and the walk report, on every platform.
-  const given = typeof sddRoot === 'string' ? sddRoot.trim().replace(/\\/g, '/') : '';
-  const abs = given ? path.resolve(root, given) : null;
-  return {
-    root,
-    sddRootRel: abs ? rel(root, abs) : null,
-    sddRoot: abs,
-    maxLines: Number.isInteger(maxLines) && maxLines > 0 ? maxLines : null,
-    maxLinesRaw: maxLines,
-  };
+  const kinds = [];
+  for (const type of D.TYPES) {
+    const docRoot = raw && raw.paths && raw.paths[type.rootKey];
+    const maxLines = raw && raw[type.section] ? raw[type.section].maxLines : undefined;
+    // Resolved and made relative again, so `./docs/sdd`, `docs\sdd/` and `docs/sdd` all compare
+    // equal to the paths git and the walk report, on every platform.
+    const given = typeof docRoot === 'string' ? docRoot.trim().replace(/\\/g, '/') : '';
+    if (!given) continue;
+    const abs = path.resolve(root, given);
+    kinds.push({
+      type,
+      rootRel: rel(root, abs),
+      rootAbs: abs,
+      maxLines: Number.isInteger(maxLines) && maxLines > 0 ? maxLines : null,
+      maxLinesRaw: maxLines,
+    });
+  }
+  return { root, kinds };
 }
 
-function requireSddRoot(cfg) {
-  if (!cfg.sddRoot) fail(`${CONFIG_NAME} has no paths.sddRoot; the to-sdd skill's init sets it`);
+const kindOf = (cfg, prefix) => cfg.kinds.find((k) => k.type.prefix === prefix) || null;
+const either = (words) => words.join(' or ');
+
+function requireRoots(cfg) {
+  if (cfg.kinds.length) return;
+  const keys = either(D.TYPES.map((t) => `paths.${t.rootKey}`));
+  const skills = either(D.TYPES.map((t) => t.skill));
+  fail(`${CONFIG_NAME} has no ${keys}; the ${skills} skill's init sets ${D.TYPES.length === 1 ? 'it' : 'them'}`);
 }
 
 // No default: the init writes the limit into the config, so the number in force is visible there.
 function requireMaxLines(cfg) {
-  if (cfg.maxLines) return;
-  if (cfg.maxLinesRaw === undefined) fail(`${CONFIG_NAME} has no sdd.maxLines; the to-sdd skill's init sets it`);
-  fail(`sdd.maxLines in ${CONFIG_NAME} must be a positive whole number, not ${JSON.stringify(cfg.maxLinesRaw)}`);
+  for (const k of cfg.kinds) {
+    if (k.maxLines) continue;
+    const key = `${k.type.section}.maxLines`;
+    if (k.maxLinesRaw === undefined) fail(`${CONFIG_NAME} has no ${key}; the ${k.type.skill} skill's init sets it`);
+    fail(`${key} in ${CONFIG_NAME} must be a positive whole number, not ${JSON.stringify(k.maxLinesRaw)}`);
+  }
 }
 
 // git's output, or null when it is missing or exits with a status not in `ok`.
@@ -163,78 +183,96 @@ function readText(abs) {
 
 // ---------------------------------------------------------------- docs
 
-// Every SDD under sddRoot: folders (SDDnnn-slug/) and single files still in the old format
-// (SDDnnn-slug.md), which count for numbering and references until they are migrated.
+// Every doc under each configured root: folders (SDDnnn-slug/) and, for a type that still has
+// them, single files in the old format (SDDnnn-slug.md), which count for numbering and references
+// until they are migrated. Roots may be one directory, or one inside another: a doc belongs to the
+// type whose prefix its name carries.
 function loadDocs(cfg) {
   const docs = [];
-  if (!cfg.sddRoot || !fs.existsSync(cfg.sddRoot)) return docs;
-  for (const e of fs.readdirSync(cfg.sddRoot, { withFileTypes: true })) {
-    const m = (e.isDirectory() && D.DOC_DIR_RE.exec(e.name)) || (e.isFile() && D.FLAT_FILE_RE.exec(e.name));
-    if (!m) continue;
-    const abs = path.join(cfg.sddRoot, e.name);
-    const files = new Map();
-    const eols = new Map();
-    const read = (name, file) => {
-      const { lines, eol } = D.splitLines(fs.readFileSync(file, 'utf8'));
-      files.set(name, lines);
-      eols.set(name, eol);
-    };
-    if (e.isDirectory()) {
-      for (const f of fs.readdirSync(abs, { withFileTypes: true })) {
-        if (f.isFile() && f.name.endsWith('.md')) read(f.name, path.join(abs, f.name));
+  for (const k of cfg.kinds) {
+    const { type } = k;
+    if (!fs.existsSync(k.rootAbs)) continue;
+    for (const e of fs.readdirSync(k.rootAbs, { withFileTypes: true })) {
+      const m = (e.isDirectory() && type.dirRe.exec(e.name)) || (e.isFile() && type.flatRe && type.flatRe.exec(e.name));
+      if (!m) continue;
+      const abs = path.join(k.rootAbs, e.name);
+      const files = new Map();
+      const eols = new Map();
+      const read = (name, file) => {
+        const { lines, eol } = D.splitLines(fs.readFileSync(file, 'utf8'));
+        files.set(name, lines);
+        eols.set(name, eol);
+      };
+      if (e.isDirectory()) {
+        for (const f of fs.readdirSync(abs, { withFileTypes: true })) {
+          if (f.isFile() && f.name.endsWith('.md')) read(f.name, path.join(abs, f.name));
+        }
+      } else {
+        read(D.README, abs);
       }
-    } else {
-      read(D.README, abs);
+      const num = Number(m[1]);
+      docs.push({
+        kind: e.isDirectory() ? 'folder' : 'flat',
+        type,
+        prefix: type.prefix,
+        name: e.name,
+        abs,
+        rel: rel(cfg.root, abs),
+        num,
+        digits: m[1],
+        id: D.docId(type.prefix, num),
+        files,
+        eols,
+        model: D.buildModel(files),
+      });
     }
-    const num = Number(m[1]);
-    docs.push({
-      kind: e.isDirectory() ? 'folder' : 'flat',
-      name: e.name,
-      abs,
-      rel: rel(cfg.root, abs),
-      num,
-      digits: m[1],
-      id: D.docId(num),
-      files,
-      eols,
-      model: D.buildModel(files),
-    });
   }
-  return docs.sort((a, b) => a.num - b.num || a.name.localeCompare(b.name));
+  const rank = (d) => D.TYPES.indexOf(d.type);
+  return docs.sort((a, b) => rank(a) - rank(b) || a.num - b.num || a.name.localeCompare(b.name));
 }
 
-function byNum(docs) {
+function byId(docs) {
   const map = new Map();
   for (const d of docs) {
-    if (!map.has(d.num)) map.set(d.num, []);
-    map.get(d.num).push(d);
+    if (!map.has(d.id)) map.set(d.id, []);
+    map.get(d.id).push(d);
   }
   return map;
 }
 
 const fileOf = (doc, name) => (doc.kind === 'folder' ? `${doc.rel}/${name}` : doc.rel);
+// Docs of the configured types only: a reference to another type cannot be checked.
+const kindOfDoc = (cfg, doc) => kindOf(cfg, doc.prefix);
 
-// The files a reference scan reads. With git: those `git grep` finds SDD in — tracked or
-// untracked, ignored ones excluded, files deleted from the worktree skipped — plus the SDD files
-// themselves, whose bare § references name their own sections. Binaries are listed too, and
+// The files a reference scan reads. With git: those `git grep` finds a prefix and a digit in —
+// tracked or untracked, ignored ones excluded, files deleted from the worktree skipped — plus the
+// docs' own files, whose bare § references name their own sections. Binaries are listed too, and
 // readText drops them: git's own test would also drop a source file with a NUL in a string.
 // Without git: every file the walk finds, and the scan reads each to find out.
 function citingFiles(cfg, docs) {
-  const out = git(cfg.root, ['grep', '-lz', '--untracked', '-e', 'SDD'], [0, 1]); // 1: no match
+  const patterns = D.TYPES.flatMap((t) => ['-e', `${t.prefix}[0-9]`]);
+  const out = git(cfg.root, ['grep', '-lz', '--untracked', ...patterns], [0, 1]); // 1: no match
   if (out === null) return repoFiles(cfg.root);
   const found = new Set(out.split('\0').filter(Boolean));
   for (const d of docs) for (const name of d.files.keys()) found.add(fileOf(d, name));
   return [...found].sort();
 }
 
-// SDD011, SDD11 or 11, as given on the command line, to the docs it names.
-function select(docs, args) {
+// SDD011, SDD11, or 11 when only one type is configured, as given on the command line, to the
+// docs it names.
+function select(cfg, docs, args) {
   if (!args.length) return null;
+  const prefixes = D.TYPES.map((t) => t.prefix);
   const want = new Set();
   for (const a of args) {
-    const m = /^(?:SDD)?(\d+)$/i.exec(a);
-    if (!m) fail(`not an SDD id: ${a}`);
-    const id = D.docId(Number(m[1]));
+    const m = new RegExp(`^(${prefixes.join('|')})?(\\d+)$`, 'i').exec(a);
+    if (!m) fail(`not an id: ${a}; write it like ${either(prefixes.map((p) => `${p}001`))}`);
+    let prefix = m[1] && m[1].toUpperCase();
+    if (!prefix) {
+      if (cfg.kinds.length !== 1) fail(`ambiguous: ${a}; write ${either(cfg.kinds.map((k) => D.docId(k.type.prefix, Number(m[2]))))}`);
+      prefix = cfg.kinds[0].type.prefix;
+    }
+    const id = D.docId(prefix, Number(m[2]));
     if (!docs.some((d) => d.id === id)) fail(`${id} does not exist`);
     want.add(id);
   }
@@ -245,10 +283,10 @@ function select(docs, args) {
 
 function docIssues(doc, cfg) {
   if (doc.kind === 'flat') {
-    return [{ path: doc.rel, level: 'warning', message: 'a single-file SDD: `migrate` moves it into a folder', fixable: false }];
+    return [{ path: doc.rel, level: 'warning', message: `a single-file ${doc.type.noun}: \`migrate\` moves it into a folder`, fixable: false }];
   }
-  const issues = D.checkDoc(doc.model, { id: doc.id, maxLines: cfg.maxLines }).map((x) => ({ ...x, path: fileOf(doc, x.file) }));
-  if (`SDD${doc.digits}` !== doc.id) {
+  const issues = D.checkDoc(doc.model, fixCtx(cfg, doc)).map((x) => ({ ...x, path: fileOf(doc, x.file) }));
+  if (`${doc.prefix}${doc.digits}` !== doc.id) {
     issues.unshift({ path: doc.rel, level: 'error', message: `the folder name must start with ${doc.id}`, fixable: false });
   }
   return issues;
@@ -256,25 +294,24 @@ function docIssues(doc, cfg) {
 
 function numberIssues(docs) {
   const issues = [];
-  for (const [num, same] of byNum(docs)) {
+  for (const [id, same] of byId(docs)) {
     if (same.length < 2) continue;
-    const id = D.docId(num);
     issues.push({
       path: same[1].rel,
       level: 'error',
-      message: `two SDDs are numbered ${id}: ${same.map((d) => d.name).join(' and ')}; renumber the newer one with \`next\``,
+      message: `two ${same[0].type.plural} are numbered ${id}: ${same.map((d) => d.name).join(' and ')}; renumber the newer one with \`next\``,
       fixable: false,
-      num,
+      id,
     });
   }
   return issues;
 }
 
-// References in the given files, checked against the docs. An SDD's own files are taken from the
-// docs as loaded rather than read again. Each issue remembers which SDD it points at and which
-// SDD's file it sits in, so a check scoped to some SDDs can keep only those.
+// References in the given files, checked against the docs. A doc's own files are taken from the
+// docs as loaded rather than read again. Each issue remembers which doc it points at and which
+// doc's file it sits in, so a check scoped to some docs can keep only those.
 function refIssues(cfg, docs, files) {
-  const nums = byNum(docs);
+  const ids = byId(docs);
   const owner = new Map();
   for (const d of docs) for (const [name, lines] of d.files) owner.set(fileOf(d, name), { doc: d, lines });
   const issues = [];
@@ -285,25 +322,28 @@ function refIssues(cfg, docs, files) {
       lines = own.lines;
     } else {
       const text = readText(path.join(cfg.root, p));
-      if (text === null || !text.includes('SDD')) continue; // outside an SDD, every form carries SDD
+      if (text === null || !D.HINT_RE.test(text)) continue; // outside a doc, every form carries a prefix and a digit
       lines = D.splitLines(text).lines;
     }
     for (const ref of D.refsInFile(p, lines, { markdown: /\.mdx?$/i.test(p), inDoc: Boolean(own) })) {
-      const bad = D.validateRef(ref, nums, own && own.doc);
-      if (bad) issues.push({ path: p, line: ref.i + 1, ...bad, fixable: false, target: ref.num ?? own.doc.num, source: own ? own.doc.num : null });
+      const bad = D.validateRef(ref, ids, own && own.doc);
+      if (bad) issues.push({ path: p, line: ref.i + 1, ...bad, fixable: false, target: D.refId(ref, own && own.doc), source: own ? own.doc.id : null });
     }
   }
   return issues;
 }
 
 function collectIssues(cfg, docs, sel, files) {
-  const inSel = (num) => !sel || sel.has(D.docId(num));
+  const inSel = (id) => !sel || sel.has(id);
   const issues = [];
-  for (const d of docs) if (inSel(d.num)) issues.push(...docIssues(d, cfg));
-  issues.push(...numberIssues(docs).filter((x) => inSel(x.num)));
+  for (const d of docs) if (inSel(d.id)) issues.push(...docIssues(d, cfg));
+  issues.push(...numberIssues(docs).filter((x) => inSel(x.id)));
   issues.push(...refIssues(cfg, docs, files).filter((x) => !sel || inSel(x.target) || (x.source !== null && inSel(x.source))));
   return issues;
 }
+
+// The docs of the configured types, for messages: "SDD docs", "SDD docs and KB pages".
+const docsLabel = (kinds) => kinds.map((k) => k.type.docs).join(' and ');
 
 function formatIssue(x) {
   return `${x.path}${x.line ? `:${x.line}` : ''}: ${x.level === 'warning' ? 'warning: ' : ''}${x.message}`;
@@ -313,12 +353,12 @@ function scriptPath() {
   return posix(path.resolve(__filename));
 }
 
-function report(issues) {
+function report(cfg, issues) {
   const errors = issues.filter((x) => x.level === 'error');
   const warnings = issues.length - errors.length;
   for (const x of issues) console.log(formatIssue(x));
   if (!issues.length) {
-    console.log('All SDD docs pass.');
+    console.log(`All ${docsLabel(cfg.kinds)} pass.`);
     return 0;
   }
   const fixable = issues.filter((x) => x.fixable).length;
@@ -333,10 +373,16 @@ function report(issues) {
 // ---------------------------------------------------------------- commands
 
 function cmdCheck(cfg, args) {
-  requireSddRoot(cfg);
+  requireRoots(cfg);
   requireMaxLines(cfg);
   const docs = loadDocs(cfg);
-  return report(collectIssues(cfg, docs, select(docs, args), citingFiles(cfg, docs)));
+  return report(cfg, collectIssues(cfg, docs, select(cfg, docs, args), citingFiles(cfg, docs)));
+}
+
+// What fix and checkDoc need to know about a doc.
+function fixCtx(cfg, doc) {
+  const { type, maxLines } = kindOfDoc(cfg, doc);
+  return { id: doc.id, maxLines, noun: type.noun, lineCites: type.lint.lineCites };
 }
 
 // Writes the files that changed, and deletes those fix merged away.
@@ -353,14 +399,14 @@ function writeDocFiles(dir, files, before, eol) {
 }
 
 function cmdFix(cfg, args, dryRun) {
-  requireSddRoot(cfg);
+  requireRoots(cfg);
   requireMaxLines(cfg);
   const docs = loadDocs(cfg);
-  const sel = select(docs, args);
+  const sel = select(cfg, docs, args);
   let blocked = false;
   for (const doc of docs) {
     if (doc.kind !== 'folder' || (sel && !sel.has(doc.id))) continue;
-    const res = D.fixDoc(doc.files, { id: doc.id, maxLines: cfg.maxLines });
+    const res = D.fixDoc(doc.files, fixCtx(cfg, doc));
     if (res.blocked) {
       blocked = true;
       console.log(`${doc.id}: not changed. Repair these first, then run fix again:`);
@@ -380,11 +426,15 @@ function cmdFix(cfg, args, dryRun) {
   }
   const after = loadDocs(cfg);
   console.log('');
-  return report(collectIssues(cfg, after, sel, citingFiles(cfg, after)));
+  return report(cfg, collectIssues(cfg, after, sel, citingFiles(cfg, after)));
 }
 
+// Single-file docs into folders. Only a type with legacyFlat has them: SDDs.
 function cmdMigrate(cfg, dryRun) {
-  requireSddRoot(cfg);
+  const legacy = D.TYPES.filter((t) => t.legacyFlat);
+  if (!legacy.some((t) => kindOf(cfg, t.prefix))) {
+    fail(`${CONFIG_NAME} has no ${either(legacy.map((t) => `paths.${t.rootKey}`))}; the ${either(legacy.map((t) => t.skill))} skill's init sets it`);
+  }
   requireMaxLines(cfg);
   const docs = loadDocs(cfg);
   const flat = docs.filter((d) => d.kind === 'flat');
@@ -404,7 +454,7 @@ function cmdMigrate(cfg, dryRun) {
   let shorts = 0;
   for (const p of citingFiles(cfg, docs)) {
     const text = readText(path.join(cfg.root, p));
-    if (text === null || !text.includes('SDD')) continue;
+    if (text === null || !D.HINT_RE.test(text)) continue;
     const { lines, eol, final } = D.splitLines(text);
     const markdown = /\.mdx?$/i.test(p);
     const fenced = markdown ? D.scanFile(p, lines).fenced : [];
@@ -431,7 +481,7 @@ function cmdMigrate(cfg, dryRun) {
     edits.delete(d.rel);
     const { lines, eol } = D.splitLines(text);
     const input = new Map([[D.README, lines]]);
-    const res = D.fixDoc(input, { id: d.id, maxLines: cfg.maxLines });
+    const res = D.fixDoc(input, fixCtx(cfg, d));
     return { doc: d, dir: d.abs.slice(0, -'.md'.length), files: res.blocked ? input : res.files, eol, res };
   });
 
@@ -459,7 +509,7 @@ function cmdMigrate(cfg, dryRun) {
   }
   console.log('');
   const after = loadDocs(cfg);
-  return report(collectIssues(cfg, after, null, citingFiles(cfg, after)));
+  return report(cfg, collectIssues(cfg, after, null, citingFiles(cfg, after)));
 }
 
 // Docs keep names the code dropped, so a name found only in one proves nothing. Migrations keep
@@ -497,19 +547,21 @@ function pathFinder(files) {
   };
 }
 
+// Whether a repository path lies under a configured doc root.
+const inDocRoot = (cfg, p) => cfg.kinds.some((k) => p === k.rootRel || p.startsWith(`${k.rootRel}/`));
+
 // What lint says about the names in backticks the code no longer has: { ...name, why }. A path is
 // looked up in the repository's file list, minus what git ignores, like build output. An
-// identifier is looked up among the words of every text file but the SDDs and the docs, read once
-// for all the names.
+// identifier is looked up among the words of every text file but the doc roots' and the docs,
+// read once for all the names.
 function missingNames(cfg, names) {
   const files = repoFiles(cfg.root);
   const has = pathFinder(files);
   const code = new Set();
   const migrations = new Set();
   if (names.some((n) => n.kind === 'name')) {
-    const inSdd = (p) => p === cfg.sddRootRel || p.startsWith(`${cfg.sddRootRel}/`);
     for (const p of files) {
-      if (inSdd(p) || DOC_FILE_RE.test(p)) continue;
+      if (inDocRoot(cfg, p) || DOC_FILE_RE.test(p)) continue;
       const text = readText(path.join(cfg.root, p));
       const into = MIGRATION_RE.test(p) ? migrations : code;
       if (text) for (const m of text.matchAll(/[A-Za-z_]\w*/g)) into.add(m[0]);
@@ -532,15 +584,19 @@ function missingNames(cfg, names) {
 // Leads for a content pass: what lintDoc finds, and the names in backticks the code no longer
 // has. All warnings, since each needs a reading to confirm; the exit status is 0.
 function cmdLint(cfg, args) {
-  requireSddRoot(cfg);
+  requireRoots(cfg);
   const docs = loadDocs(cfg);
-  const sel = select(docs, args);
+  const sel = select(cfg, docs, args);
   const mine = docs.filter((d) => !sel || sel.has(d.id));
   const issues = [];
   for (const d of mine) {
-    for (const x of D.lintDoc(d.model)) issues.push({ path: fileOf(d, x.file), line: x.i + 1, level: 'warning', message: x.message });
+    for (const x of D.lintDoc(d.model, d.type.lint)) issues.push({ path: fileOf(d, x.file), line: x.i + 1, level: 'warning', message: x.message });
   }
-  const names = mine.flatMap((d) => D.codeNames(d.model).map((n) => ({ ...n, path: fileOf(d, n.file) })));
+  const names = mine.flatMap((d) =>
+    D.codeNames(d.model)
+      .filter((n) => d.type.lint.names.includes(n.kind))
+      .map((n) => ({ ...n, path: fileOf(d, n.file) })),
+  );
   for (const n of missingNames(cfg, names)) {
     issues.push({ path: n.path, line: n.i + 1, level: 'warning', message: `\`${n.token}\`: ${n.why}` });
   }
@@ -554,12 +610,12 @@ function cmdLint(cfg, args) {
   return 0;
 }
 
-// The sections the given files cite, each with where it lives and who cites it. Files inside
-// the SDD folders are skipped: this is for finding which docs a code change may have made wrong.
-// A citation in a non-canonical spelling (SDD1§2) is listed under the id it means, with a note,
+// The sections the given files cite, each with where it lives and who cites it. Files under the
+// doc roots are skipped: this is for finding which docs a code change may have made wrong. A
+// citation in a non-canonical spelling (SDD1§2) is listed under the id it means, with a note,
 // since the doc it names is affected all the same.
 function cmdRefs(cfg, args) {
-  requireSddRoot(cfg);
+  requireRoots(cfg);
   let files;
   if (args.length === 1 && args[0] === '--changed') {
     files = changedFiles(cfg.root);
@@ -570,40 +626,40 @@ function cmdRefs(cfg, args) {
     fail('refs needs --changed or a list of files');
   }
   const docs = loadDocs(cfg);
-  const nums = byNum(docs);
-  const inSdd = (p) => cfg.sddRootRel && (p === cfg.sddRootRel || p.startsWith(`${cfg.sddRootRel}/`));
+  const ids = byId(docs);
   const cited = new Map();
   for (const p of files) {
-    if (inSdd(p)) continue;
+    if (inDocRoot(cfg, p)) continue;
     const text = readText(path.join(cfg.root, p));
-    if (text === null || !text.includes('SDD')) continue;
+    if (text === null || !D.HINT_RE.test(text)) continue;
     const { lines } = D.splitLines(text);
     for (const ref of D.refsInFile(p, lines, { markdown: /\.mdx?$/i.test(p), inDoc: false })) {
       const at = ref.anchor || ref.tag;
-      const key = `${D.docId(ref.num)}${at ? `§${at}` : ''}`;
-      if (!cited.has(key)) cited.set(key, { num: ref.num, anchor: ref.anchor, tag: ref.tag, by: [] });
+      const id = D.docId(ref.prefix, ref.num);
+      const key = `${id}${at ? `§${at}` : ''}`;
+      if (!cited.has(key)) cited.set(key, { id, prefix: ref.prefix, num: ref.num, anchor: ref.anchor, tag: ref.tag, by: [] });
       const note = ref.kind === 'noncanonical' ? ` (as ${ref.text}; write ${key})` : '';
       cited.get(key).by.push(`${p}:${ref.i + 1}${note}`);
     }
   }
   if (!cited.size) {
-    console.log('No SDD references in those files.');
+    console.log(`No ${either(D.TYPES.map((t) => t.prefix))} references in those files.`);
     return 0;
   }
   // By doc; within one, the doc itself, then its sections in order, then labels.
   const keys = [...cited.keys()].sort((a, b) => {
     const x = cited.get(a);
     const y = cited.get(b);
-    return x.num - y.num || Boolean(x.tag) - Boolean(y.tag) || (x.tag ? a.localeCompare(b) : D.compareAnchors(x.anchor || '0', y.anchor || '0'));
+    return D.compareIds(x.id, y.id) || Boolean(x.tag) - Boolean(y.tag) || (x.tag ? a.localeCompare(b) : D.compareAnchors(x.anchor || '0', y.anchor || '0'));
   });
   for (const key of keys) {
-    const { num, anchor, tag, by } = cited.get(key);
-    const doc = (nums.get(num) || [])[0];
+    const { id, prefix, num, anchor, tag, by } = cited.get(key);
+    const doc = (ids.get(id) || [])[0];
     const s = doc && anchor && doc.model.sections.get(anchor);
     const title = s ? s.title : doc && !anchor && !tag ? (doc.model.h1 ? doc.model.h1.text : '') : '';
     console.log(`${key}${title ? `  ${title}` : ''}`);
     if (!doc) console.log('  does not exist');
-    else if (tag) console.log(`  ${D.validateRef({ kind: 'full', num, tag }, nums).message}`);
+    else if (tag) console.log(`  ${D.validateRef({ kind: 'full', prefix, num, tag }, ids).message}`);
     else if (anchor && !s) console.log(`  not found in ${doc.rel}`);
     else console.log(`  in ${fileOf(doc, s ? s.file : D.README)}${s ? `:${s.i + 1}` : ''}`);
     console.log(`  cited by ${by.join(', ')}`);
@@ -611,20 +667,34 @@ function cmdRefs(cfg, args) {
   return 0;
 }
 
-// One more than the highest number any SDD has had: on disk, or anywhere in git history on any
-// branch, deleted ones included. A number is never reused, because something may still cite it.
-function cmdNext(cfg) {
-  requireSddRoot(cfg);
+// One more than the highest number any doc of the type has had: on disk, or anywhere in git
+// history on any branch, deleted ones included. A number is never reused, because something may
+// still cite it. The type is the one prefix given, or the only one configured.
+function cmdNext(cfg, args) {
+  requireRoots(cfg);
+  let kind;
+  if (args.length) {
+    const t = D.typeOf(String(args[0]).toUpperCase());
+    if (!t || args.length > 1) fail(`next takes one of ${either(D.TYPES.map((x) => x.prefix))}`);
+    kind = kindOf(cfg, t.prefix);
+    if (!kind) fail(`${CONFIG_NAME} has no paths.${t.rootKey}; the ${t.skill} skill's init sets it`);
+  } else if (cfg.kinds.length === 1) {
+    kind = cfg.kinds[0];
+  } else {
+    fail(`next needs ${either(cfg.kinds.map((k) => k.type.prefix))}`);
+  }
+  const { prefix } = kind.type;
   let max = 0;
-  for (const d of loadDocs(cfg)) max = Math.max(max, d.num);
-  const log = git(cfg.root, ['log', '--all', '--format=', '--name-only', '--', cfg.sddRootRel]);
+  for (const d of loadDocs(cfg)) if (d.prefix === prefix) max = Math.max(max, d.num);
+  const log = git(cfg.root, ['log', '--all', '--format=', '--name-only', '--', kind.rootRel]);
   if (log) {
+    const re = new RegExp(`(?:^|/)${prefix}(\\d{3,})-[^/]*`);
     for (const line of log.split('\n')) {
-      const m = /(?:^|\/)SDD(\d{3,})-[^/]*/.exec(line.trim());
+      const m = re.exec(line.trim());
       if (m) max = Math.max(max, Number(m[1]));
     }
   }
-  console.log(D.docId(max + 1));
+  console.log(D.docId(prefix, max + 1));
   return 0;
 }
 
@@ -638,9 +708,9 @@ function readStdin() {
   }
 }
 
-// The Stop hook. Silent unless an SDD folder changed since HEAD breaks a rule; then it prints a
+// The Stop hook. Silent unless a doc folder changed since HEAD breaks a rule; then it prints a
 // reply that sends the problems to the agent and keeps it working. It checks only the changed docs
-// and the references inside them — references from code are the skill's job, not something to pay
+// and the references inside them — references from code are the skills' job, not something to pay
 // for at the end of every turn.
 //
 // Most agents share one end-of-turn hook shape: `cwd` and `stop_hook_active` on stdin, and
@@ -662,32 +732,44 @@ function hook(input) {
   } catch {
     return 0;
   }
-  if (!cfg.sddRoot) return 0;
+  if (!cfg.kinds.length) return 0;
   const changed = changedFiles(root);
   if (!changed) return 0;
-  const prefix = `${cfg.sddRootRel}/`;
+  // The doc folders changed, by their path from the root, and the kinds they belong to.
   const touched = new Set();
-  for (const p of changed) {
-    if (!p.startsWith(prefix)) continue;
-    const [first, ...restParts] = p.slice(prefix.length).split('/');
-    if (restParts.length && D.DOC_DIR_RE.test(first)) touched.add(first);
+  const touchedKinds = new Set();
+  for (const k of cfg.kinds) {
+    const prefix = `${k.rootRel}/`;
+    for (const p of changed) {
+      if (!p.startsWith(prefix)) continue;
+      const [first, ...restParts] = p.slice(prefix.length).split('/');
+      if (!restParts.length || !k.type.dirRe.test(first)) continue;
+      touched.add(`${prefix}${first}`);
+      touchedKinds.add(k);
+    }
   }
   if (!touched.size) return 0;
+  const kinds = cfg.kinds.filter((k) => touchedKinds.has(k));
 
   const lines = [];
-  if (!cfg.maxLines) {
-    lines.push(`SDD docs changed, but ${CONFIG_NAME} has no valid sdd.maxLines, so they cannot be checked. Run the to-sdd skill's init to set it.`);
+  const unchecked = kinds.filter((k) => !k.maxLines);
+  if (unchecked.length) {
+    for (const k of unchecked) {
+      lines.push(
+        `${k.type.docs} changed, but ${CONFIG_NAME} has no valid ${k.type.section}.maxLines, so they cannot be checked. Run the ${k.type.skill} skill's init to set it.`,
+      );
+    }
   } else {
     const docs = loadDocs(cfg);
-    const mine = docs.filter((d) => d.kind === 'folder' && touched.has(d.name));
-    const nums = new Set(mine.map((d) => d.num));
+    const mine = docs.filter((d) => d.kind === 'folder' && touched.has(d.rel));
+    const mineIds = new Set(mine.map((d) => d.id));
     const issues = [
       ...mine.flatMap((d) => docIssues(d, cfg)),
-      ...numberIssues(docs).filter((x) => nums.has(x.num)),
+      ...numberIssues(docs).filter((x) => mineIds.has(x.id)),
       ...refIssues(cfg, docs, mine.flatMap((d) => [...d.files.keys()].map((name) => fileOf(d, name)))),
     ].filter((x) => x.level === 'error');
     if (!issues.length) return 0;
-    const ids = [...new Set(mine.map((d) => d.id))];
+    const ids = [...mineIds];
     const fixable = issues.filter((x) => x.fixable);
     const manual = issues.filter((x) => !x.fixable);
     const runFix = [
@@ -696,7 +778,8 @@ function hook(input) {
       ...fixable.map((x) => `  ${formatIssue(x)}`),
     ];
     const byHand = manual.map((x) => `  ${formatIssue(x)}`);
-    lines.push('SDD docs changed in this task break the SDD rules. Repair them before you finish.');
+    const rules = kinds.map((k) => k.type.prefix).join(' and ');
+    lines.push(`${docsLabel(kinds)} changed in this task break the ${rules} rules. Repair them before you finish.`);
     // fix refuses a doc with a structural problem, so those come first when there are any.
     if (!fixable.length) lines.push('', 'Repair by hand:', ...byHand);
     else if (!manual.length) lines.push('', 'Run:', ...runFix);
@@ -710,7 +793,7 @@ function hook(input) {
 
 // ---------------------------------------------------------------- main
 
-const USAGE = 'usage: sdd-check.js <check|fix|migrate|lint|refs|next|hook> [SDDnnn ...] [--dry-run]';
+const USAGE = 'usage: doc-check.js <check|fix|migrate|lint|refs|next|hook> [ID ...] [--dry-run]';
 
 function main(argv = process.argv.slice(2)) {
   const [cmd, ...rest] = argv;
@@ -726,14 +809,14 @@ function main(argv = process.argv.slice(2)) {
   }
   if (!cmd || !['check', 'fix', 'migrate', 'lint', 'refs', 'next'].includes(cmd)) fail(USAGE);
   const root = findRoot(process.cwd());
-  if (!root) fail(`no ${CONFIG_NAME} in this directory or above; the to-sdd skill's init creates it`);
+  if (!root) fail(`no ${CONFIG_NAME} in this directory or above; the ${either(D.TYPES.map((t) => t.skill))} skill's init creates it`);
   const cfg = loadConfig(root);
   if (cmd === 'check') process.exitCode = cmdCheck(cfg, args);
   else if (cmd === 'fix') process.exitCode = cmdFix(cfg, args, dryRun);
   else if (cmd === 'migrate') process.exitCode = cmdMigrate(cfg, dryRun);
   else if (cmd === 'lint') process.exitCode = cmdLint(cfg, args);
   else if (cmd === 'refs') process.exitCode = cmdRefs(cfg, args);
-  else process.exitCode = cmdNext(cfg);
+  else process.exitCode = cmdNext(cfg, args);
 }
 
 if (require.main === module) runMain(main);

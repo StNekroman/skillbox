@@ -6,8 +6,10 @@
     "node": ">=21"
   },
   "scripts": {
-    "test": "node --test \"plugins/skillbox/scripts/test/*.test.js\"",
+    "test": "node --test \"plugins/skillbox/scripts/test/*.test.js\" \"tools/test/*.test.js\"",
     "test:fork": "node --test \"plugins/skillbox/scripts/test/{cli,fork-*}.test.js\"",
-    "test:sdd": "node --test \"plugins/skillbox/scripts/test/sdd-*.test.js\""
+    "test:doc": "node --test \"plugins/skillbox/scripts/test/doc-*.test.js\" \"tools/test/*.test.js\"",
+    "sync": "node tools/sync-doc-check.js",
+    "sync:check": "node tools/sync-doc-check.js --check"
   }
 }

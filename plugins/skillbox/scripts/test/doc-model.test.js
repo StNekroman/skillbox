@@ -1,8 +1,8 @@
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
 
-const D = require('../../skills/to-sdd/scripts/lib/sdd-doc');
-const { body, section, readme, prng } = require('./sdd-helpers');
+const D = require('../doc-check/lib/doc-model');
+const { body, section, readme, prng } = require('./doc-helpers');
 
 const { README } = D;
 const ctx = (maxLines = 1000) => ({ id: 'SDD001', maxLines });
@@ -569,7 +569,7 @@ describe('references', () => {
       id: 'SDD001',
       model: D.buildModel(only([...readme('SDD001', 'A'), ...section('1', 'One'), ...section('2', '(removed; see §1)')])),
     };
-    const docs = new Map([[1, [own]]]);
+    const docs = new Map([['SDD001', [own]]]);
     const check = (line, opts) => D.findRefs(line, opts).map((r) => D.validateRef(r, docs, own));
     assert.deepEqual(check('SDD001§1'), [null]);
     assert.deepEqual(check('SDD001§9'), [{ level: 'error', message: 'SDD001 has no §9' }]);
@@ -627,7 +627,7 @@ describe('references', () => {
     const model = D.buildModel(
       only([...readme('SDD013', 'A'), ...section('1', 'Sellers (§P1)'), ...section('2', 'Offers (§P6)'), ...section('3', 'Cart (§P6, §P7)')]),
     );
-    const docs = new Map([[13, [{ id: 'SDD013', model }]]]);
+    const docs = new Map([['SDD013', [{ id: 'SDD013', model }]]]);
     const check = (line) => D.findRefs(line).map((r) => D.validateRef(r, docs, null).message);
     assert.deepEqual(check('SDD013§P1'), ['"§P1" is not a section number; the one heading in SDD013 that carries it is §1']);
     assert.deepEqual(check('SDD013§P6'), ['"§P6" is not a section number; the headings in SDD013 that carry it: §2, §3']);
@@ -639,7 +639,7 @@ describe('references', () => {
     const sdd013 = D.buildModel(only([...readme('SDD013', 'A'), ...section('1', 'Sellers (§P1)'), ...section('2', 'Offers (§P6)')]));
     const sdd002 = D.buildModel(only([...readme('SDD002', 'B'), ...section('1', 'Checkout (SDD013§P6)')]));
     const own = { id: 'SDD002', model: sdd002 };
-    const docs = new Map([[2, [own]], [13, [{ id: 'SDD013', model: sdd013 }]]]);
+    const docs = new Map([['SDD002', [own]], ['SDD013', [{ id: 'SDD013', model: sdd013 }]]]);
     const check = (line) => D.findRefs(line, { bare: true }).map((r) => D.validateRef(r, docs, own).message);
     assert.deepEqual(check('since §P6'), ['"§P6" is not a section number; no heading in SDD002 carries it, but these do: SDD013 (§2)']);
     assert.deepEqual(check('since §P9'), ['"§P9" is not a section number, and no heading in SDD002 carries it']);

@@ -169,10 +169,10 @@ After the abstract, the README may hold a few short lines, such as a note on how
 
 ## The script
 
-It is `scripts/sdd-check.js` in this skill's folder. Run it from the repository root. The Stop hook runs it too, where one is set up.
+It is `scripts/doc-check.js` in this skill's folder. Run it from the repository root. The Stop hook runs it too, where one is set up.
 
 ```bash
-node "${CLAUDE_SKILL_DIR}/scripts/sdd-check.js" <command>
+node "${CLAUDE_SKILL_DIR}/scripts/doc-check.js" <command>
 ```
 
 `${CLAUDE_SKILL_DIR}` is the folder this `SKILL.md` is in. If it reaches you unexpanded, write that folder's absolute path in its place.

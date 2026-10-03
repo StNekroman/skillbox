@@ -177,7 +177,7 @@ Commit the file. Ignore only `.skillbox/cache/`, the place for anything derived 
 ## Requirements
 
 Node. Developed against v22; anything with `crypto.randomUUID` will do. The SDD hook and
-`sdd-check.js refs --changed` also need git.
+`doc-check.js refs --changed` also need git.
 
 The fork commands drive Claude Code's own session store and CLI, including two undocumented flags.
 See [scripts/README.md](scripts/README.md#version-coupling) for what an upgrade might break.

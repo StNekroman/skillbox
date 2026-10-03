@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/skills/to-sdd/scripts/sdd-check.js\" hook",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/doc-check/doc-check.js\" hook",
             "timeout": 30
           }
         ]

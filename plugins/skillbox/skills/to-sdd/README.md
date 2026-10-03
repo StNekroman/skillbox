@@ -68,7 +68,7 @@ ADR behind a design choice when there is one.
 
 ## The script and the hook
 
-`scripts/sdd-check.js`, in this folder, does everything mechanical, so the model never moves text
+`scripts/doc-check.js`, in this folder, does everything mechanical, so the model never moves text
 between files by hand. It ships inside the skill so that the folder works installed on its own;
 its internals and tests are documented in the plugin's
 [scripts README](../../scripts/README.md#the-sdd-checker).
@@ -99,7 +99,7 @@ once. In a repository with no `paths.sddRoot` it does nothing.
 
 The plugin sets the hook up in Claude Code. The script answers in the end-of-turn hook format of
 Codex, Copilot CLI and Gemini CLI too, and in both of Cursor's, so it can be wired into those by
-hand: `node <this folder>/scripts/sdd-check.js hook` on their `Stop`, `agentStop`, `AfterAgent` or
+hand: `node <this folder>/scripts/doc-check.js hook` on their `Stop`, `agentStop`, `AfterAgent` or
 `stop` event. That follows their documentation; only Claude Code has been tried. Where no hook is
 set up, the skill's own `fix` and `check` are the only check.
 
@@ -118,5 +118,5 @@ set up, the skill's own `fix` and `check` are the only check.
 | `SKILL.md` | the instructions |
 | `references/instructions-block.md` | the block proposed for a repository's `CLAUDE.md` or `AGENTS.md` |
 | `references/config.md` | the keys of `.skillbox/tickets.json` this skill reads, and the init that fills them |
-| `scripts/sdd-check.js` | the checker the skill and the Stop hook run |
-| `scripts/lib/sdd-doc.js` | the SDD model the checker is built on |
+| `scripts/doc-check.js` | the checker the skill and the Stop hook run |
+| `scripts/lib/doc-model.js` | the SDD model the checker is built on |

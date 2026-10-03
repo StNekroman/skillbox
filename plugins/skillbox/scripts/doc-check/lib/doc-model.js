@@ -1,28 +1,70 @@
-// The SDD document model. An SDD is a folder, SDDnnn-<slug>/, holding README.md — the title, the
+// Source: plugins/skillbox/scripts/doc-check/. The copies under plugins/skillbox/skills/*/scripts/
+// are written by `npm run sync`; edit the source, never a copy.
+//
+// The document model. A doc is a folder, <PREFIX>nnn-<slug>/, holding README.md — the title, the
 // abstract, the generated index, and every section not moved out yet — plus one file per
 // moved-out section, named for its anchor: 3.md, 3.2.md. A section is a heading that carries its
 // anchor, `### §3.2 Title`, so a reference like SDD011§3.2 finds its heading wherever it lives.
+// Every doc type in TYPES shares this format; they differ in where they live and in what lint
+// looks for.
 //
-// Everything here is pure: lines in, issues or new lines out. sdd-check.js does the disk and git
+// Everything here is pure: lines in, issues or new lines out. doc-check.js does the disk and git
 // work.
 
 const README = 'README.md';
 const ABSTRACT_MAX = 500;
 
+// The doc types. A prefix is capitals only and starts no other, so no id can be read as another
+// type's. rootKey and section name the config keys, paths.<rootKey> and <section>.maxLines; skill
+// is the one whose init sets them. legacyFlat: single-file docs, <PREFIX>nnn-<slug>.md, are still
+// loaded, and migrate moves them into folders. linkBack: refs --changed reports the sections that
+// link a changed file. lint: which of lint's leads apply, and which kinds of names in backticks
+// are looked up (see codeName).
+const TYPES = [
+  {
+    prefix: 'SDD',
+    noun: 'SDD',
+    plural: 'SDDs',
+    docs: 'SDD docs',
+    rootKey: 'sddRoot',
+    section: 'sdd',
+    skill: 'to-sdd',
+    legacyFlat: true,
+    linkBack: false,
+    lint: { history: true, fences: true, labelInTitle: true, lineCites: true, names: ['dir', 'path', 'file', 'name'] },
+  },
+].map((t) => ({
+  ...t,
+  dirRe: new RegExp(`^${t.prefix}(\\d{3,})-[^\\s/\\\\]+$`),
+  flatRe: t.legacyFlat ? new RegExp(`^${t.prefix}(\\d{3,})-[^\\s/\\\\]+\\.md$`) : null,
+}));
+
+for (const t of TYPES) {
+  if (!/^[A-Z]+$/.test(t.prefix)) throw new Error(`doc type prefix ${t.prefix}: capitals only`);
+  const other = TYPES.find((u) => u !== t && u.prefix.startsWith(t.prefix));
+  if (other) throw new Error(`doc type prefix ${t.prefix} starts ${other.prefix}`);
+}
+
+const typeOf = (prefix) => TYPES.find((t) => t.prefix === prefix) || null;
+// Longest first, so an alternation tries the longer prefix before one it might start.
+const PREFIXES = TYPES.map((t) => t.prefix)
+  .sort((a, b) => b.length - a.length)
+  .join('|');
+
 // A section number has no leading zeros, so §3.2 has exactly one spelling.
 const NUM = '(?:0|[1-9]\\d*)';
 const ANCHOR = `${NUM}(?:\\.${NUM})*`;
 
-const DOC_DIR_RE = /^SDD(\d{3,})-[^\s/\\]+$/;
-const FLAT_FILE_RE = /^SDD(\d{3,})-[^\s/\\]+\.md$/;
 const SECTION_FILE_RE = new RegExp(`^(${ANCHOR})\\.md$`);
 const SECTION_RE = new RegExp(`^§(${ANCHOR})(?:[ \\t]+(.*))?$`);
-const TITLE_RE = /^(SDD\d{3,})[ \t]+[—–-][ \t]+(.+)$/;
+const TITLE_RE = new RegExp(`^((?:${PREFIXES})\\d{3,})[ \\t]+[—–-][ \\t]+(.+)$`);
 const FENCE_RE = /^ {0,3}(`{3,}|~{3,})/;
 const HEADING_RE = /^ {0,3}(#{1,6})(?:[ \t]+(.*?))?(?:[ \t]+#+)?[ \t]*$/;
 const RULE_RE = /^ {0,3}(?:(?:-[ \t]*){3,}|(?:\*[ \t]*){3,}|(?:_[ \t]*){3,})$/;
 const LIST_ITEM_RE = /^[ \t]*(?:[-*+]|\d+[.)])[ \t]+/;
-const BREADCRUMB_RE = /^> \[SDD\d/;
+const BREADCRUMB_RE = new RegExp(`^> \\[(?:${PREFIXES})\\d`);
+// Every form of reference holds a prefix followed by a digit: a line without one cites nothing.
+const HINT_RE = new RegExp(`(?:${PREFIXES})\\d`);
 
 // A source file, by its extension, and a citation of one of its lines: orders.service.ts:120, or
 // a link to blob/main/orders.service.ts#L120.
@@ -40,17 +82,21 @@ const INDEX_CLOSE = '<!-- /sdd:index -->';
 // are a placeholder in text about the format, and are left alone.
 const TAG = '[A-Za-z0-9](?:[A-Za-z0-9.]*[A-Za-z0-9])?';
 const isPlaceholder = (tag) => /^[a-z.]+$/.test(tag);
-// What follows a §: a section number, or else a label.
-const ITEM = `§(?:(${ANCHOR})(?!\\d)|(${TAG}))`;
+// What follows a §: a section number, or else a label. The groups are named, and each regex below
+// holds ITEM at most once, so a group's name says what it holds whatever comes before it.
+const ITEM = `§(?:(?<anchor>${ANCHOR})(?!\\d)|(?<tag>${TAG}))`;
 
 // A reference: SDD011, or SDD011§3.2, standing on its own — SDD001_FLAG and a hash like SDD12abc
 // are not references. The digits are captured whole, so a non-canonical spelling (SDD11, SDD0011)
 // is caught rather than skipped, and so is a label after the §, SDD013§P6.
-const REF_RE = new RegExp(`(?<![A-Za-z0-9_])SDD(\\d+)(?:${ITEM}|(?![A-Za-z0-9_]))`, 'g');
+const REF_RE = new RegExp(`(?<![A-Za-z0-9_])(?<prefix>${PREFIXES})(?<digits>\\d+)(?:${ITEM}|(?![A-Za-z0-9_]))`, 'g');
 const ITEM_AT_RE = new RegExp(`^${ITEM}`);
 // Prose: §8.1.2 of SDD006.
-const PROSE_RE = new RegExp(`(?<![A-Za-z0-9_§.])§(${ANCHOR})(?!\\d)[ \\t]+(?:of|in)[ \\t]+SDD(\\d+)(?![A-Za-z0-9_])`, 'g');
-// A bare §3.2, which inside an SDD's own files means a section of that SDD.
+const PROSE_RE = new RegExp(
+  `(?<![A-Za-z0-9_§.])§(?<anchor>${ANCHOR})(?!\\d)[ \\t]+(?:of|in)[ \\t]+(?<prefix>${PREFIXES})(?<digits>\\d+)(?![A-Za-z0-9_])`,
+  'g',
+);
+// A bare §3.2, which inside a doc's own files means a section of that doc.
 const BARE_RE = new RegExp(`(?<![A-Za-z0-9_§.])${ITEM}`, 'g');
 // A § straight after an all-caps name or a number cites another document: RFC 9110 §15.
 const EXTERNAL_RE = /(?:^|[^A-Za-z0-9_])(?:[A-Z][A-Z0-9-]*[A-Z0-9]|\d+(?:\.\d+)*)[ \t]+$/;
@@ -72,7 +118,19 @@ const LINK_RE = new RegExp(
 
 // ---------------------------------------------------------------- anchors
 
-const docId = (num) => `SDD${String(num).padStart(3, '0')}`;
+const docId = (prefix, num) => `${prefix}${String(num).padStart(3, '0')}`;
+// An id's prefix and number: SDD011 → { prefix: 'SDD', num: 11 }.
+function parseId(id) {
+  const m = /^([A-Z]+)(\d+)$/.exec(id);
+  return m ? { prefix: m[1], num: Number(m[2]) } : null;
+}
+// Ids in type order, then by number.
+function compareIds(a, b) {
+  const x = parseId(a);
+  const y = parseId(b);
+  const rank = (p) => TYPES.findIndex((t) => t.prefix === p.prefix);
+  return rank(x) - rank(y) || x.num - y.num;
+}
 const ownFile = (anchor) => `${anchor}.md`;
 const depthOf = (anchor) => anchor.split('.').length;
 // §3 is `##`, §3.2 is `###`, and so on; markdown stops at six.
@@ -266,8 +324,8 @@ function renderIndex(m) {
   });
 }
 
-// The first line of a section file: the SDD, then each ancestor section, each linking its file.
-// The SDD is named by the README's title when that is well-formed, else by its id alone, so the
+// The first line of a section file: the doc, then each ancestor section, each linking its file.
+// The doc is named by the README's title when that is well-formed, else by its id alone, so the
 // crumb always opens with the id — which is how a crumb is told from text above the heading.
 function renderBreadcrumb(m, anchor, id) {
   const title = m.h1 && TITLE_RE.test(m.h1.text) ? m.h1.text : id;
@@ -288,9 +346,10 @@ function currentIndex(readme) {
 
 // ---------------------------------------------------------------- checks
 
-// Issues for one SDD folder. `fixable` ones are what fix repairs; a `structural` one stops fix
-// from touching the doc at all, because moving text around it could lose or misplace some.
-function checkDoc(m, { id, maxLines }) {
+// Issues for one doc folder. `fixable` ones are what fix repairs; a `structural` one stops fix
+// from touching the doc at all, because moving text around it could lose or misplace some. noun
+// names the doc in messages; lineCites says whether a line-number citation is an error.
+function checkDoc(m, { id, maxLines, noun = 'SDD', lineCites = true }) {
   const issues = [];
   const add = (file, i, message, kind = {}) =>
     issues.push({
@@ -304,7 +363,7 @@ function checkDoc(m, { id, maxLines }) {
 
   const readme = m.files.get(README);
   if (!readme) {
-    add(README, undefined, 'missing: every SDD folder has a README.md entry file', { structural: true });
+    add(README, undefined, `missing: every ${noun} folder has a README.md entry file`, { structural: true });
   } else {
     const t = m.h1 && TITLE_RE.exec(m.h1.text);
     if (!m.h1) add(README, 0, `must open with the title heading "# ${id} — <title>"`);
@@ -313,7 +372,7 @@ function checkDoc(m, { id, maxLines }) {
 
     const abs = abstractOf(readme);
     if (!abs) {
-      add(README, m.h1 ? m.h1.i + 1 : 0, 'no abstract: open with one paragraph, under the title, saying what this SDD covers');
+      add(README, m.h1 ? m.h1.i + 1 : 0, `no abstract: open with one paragraph, under the title, saying what this ${noun} covers`);
     } else if (abs.text.length > ABSTRACT_MAX) {
       add(README, abs.i, `the abstract is ${abs.text.length} characters; the limit is ${ABSTRACT_MAX}`);
     }
@@ -406,7 +465,7 @@ function checkDoc(m, { id, maxLines }) {
     }
   }
 
-  for (const f of orderFiles(m.files)) {
+  for (const f of lineCites ? orderFiles(m.files) : []) {
     for (const { i, line } of textLines(f)) {
       const c = LINE_CITE_RE.exec(line);
       if (c) add(f.name, i, `cites a line number, ${c[0]}: lines move with every change, so cite the symbol`);
@@ -695,7 +754,7 @@ const HISTORY_RE = new RegExp(
     '\\b(?:became|landed)\\b',
     '\\bchanged from\\b',
     '\\bin the past\\b',
-    '\\bsince (?:SDD\\d+|v?\\d+\\.\\d+|then\\b|the (?:change|migration|refactor|rewrite)\\b)',
+    `\\bsince (?:(?:${PREFIXES})\\d+|v?\\d+\\.\\d+|then\\b|the (?:change|migration|refactor|rewrite)\\b)`,
     '\\b(?:before|after) (?:this|the) (?:change|migration|PR|refactor|rewrite)\\b',
     '\\bwhat changed\\b',
     '\\bthe old (?:approach|behaviou?r|code|design|flow|format|implementation|list|name|scheme|version)\\b',
@@ -714,17 +773,18 @@ const HOST_RE = /^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$/;
 // A line with its code spans and link targets blanked, so their text is not read as wording.
 const wording = (line) => line.replace(INLINE_CODE_RE, (s) => ' '.repeat(s.length)).replace(/\]\([^)\s]*\)/g, ']()');
 
-// History wording and code fences, for one SDD: { file, i, message }.
-function lintDoc(m) {
+// History wording, code fences and labels in titles, for one doc: { file, i, message }. rules is
+// its type's lint, which says which of the three apply.
+function lintDoc(m, rules = TYPES[0].lint) {
   const out = [];
   for (const f of orderFiles(m.files)) {
-    for (const fence of f.fences) {
+    for (const fence of rules.fences ? f.fences : []) {
       const lang = fence.info.split(/[\s{,]/)[0].toLowerCase();
       if (NON_CODE_FENCES.has(lang)) continue;
       const n = Math.max(0, fence.end - fence.i - 1);
       out.push({ file: f.name, i: fence.i, message: `a ${n}-line \`\`\`${lang} block: copied code goes stale; state the rule it shows and cite the symbol` });
     }
-    for (const h of f.headings) {
+    for (const h of rules.labelInTitle ? f.headings : []) {
       if (!h.section) continue;
       const title = f.lines[h.i].slice(titleStart(f.lines[h.i], h.section.anchor));
       for (const r of findRefs(title, { bare: true })) {
@@ -733,7 +793,7 @@ function lintDoc(m) {
         }
       }
     }
-    for (const { i, line } of textLines(f)) {
+    for (const { i, line } of rules.history ? textLines(f) : []) {
       const h = HISTORY_RE.exec(wording(line));
       if (h) out.push({ file: f.name, i, message: `reads as history, "${h[0].trim()}": state what is true now` });
     }
@@ -771,7 +831,7 @@ function codeName(raw) {
   return shaped ? { kind: 'name', probe: last } : null;
 }
 
-// Every name in backticks in one SDD's text that codeName would look for: { file, i, token, kind, probe }.
+// Every name in backticks in one doc's text that codeName would look for: { file, i, token, kind, probe }.
 function codeNames(m) {
   const out = [];
   for (const f of orderFiles(m.files)) {
@@ -790,21 +850,25 @@ function codeNames(m) {
 // A link target's path segments, without its fragment or query.
 const targetParts = (target) => target.split('#')[0].split('?')[0].split('/');
 
-// The SDD a link target points into — a file (SDD006-order-workflow.md), or a folder, whether
+// The doc a link target points into — a file (SDD006-order-workflow.md), or a folder, whether
 // the link ends on it (../sdd/SDD006-order-workflow) or goes into it (SDD006-order-workflow/3.md):
-// its number, or null.
+// { prefix, num }, or null.
 function linkedDoc(target) {
-  const m = targetParts(target)
-    .map((p) => FLAT_FILE_RE.exec(p) || DOC_DIR_RE.exec(p))
-    .find(Boolean);
-  return m ? Number(m[1]) : null;
+  for (const p of targetParts(target)) {
+    for (const t of TYPES) {
+      const m = (t.flatRe && t.flatRe.exec(p)) || t.dirRe.exec(p);
+      if (m) return { prefix: t.prefix, num: Number(m[1]) };
+    }
+  }
+  return null;
 }
 
 // The § item starting at `at` — a section number or a label — or null, for none or a placeholder.
 function itemAt(line, at) {
   const m = ITEM_AT_RE.exec(line.slice(at));
-  if (!m || (m[2] && isPlaceholder(m[2]))) return null;
-  return { col: at, anchor: m[1] || null, tag: m[2] || null, text: m[0], end: at + m[0].length };
+  const { anchor, tag } = m ? m.groups : {};
+  if (!m || (tag && isPlaceholder(tag))) return null;
+  return { col: at, anchor: anchor || null, tag: tag || null, text: m[0], end: at + m[0].length };
 }
 
 const isExternal = (line, col) => EXTERNAL_RE.test(line.slice(0, col));
@@ -819,7 +883,7 @@ function itemsWithin(line, from, to, taken) {
     if (!it || taken.has(it.col) || isExternal(line, it.col)) continue;
     const between = prev === null ? null : line.slice(prev, it.col);
     const slash = between !== null && SEP_RE.exec(between)?.[0] === between && between.includes('/');
-    out.push({ ...it, prefix: true, join: slash ? { from: prev, to: it.col, text: ', ' } : null });
+    out.push({ ...it, withId: true, join: slash ? { from: prev, to: it.col, text: ', ' } : null });
     prev = it.end;
   }
   return out;
@@ -827,7 +891,7 @@ function itemsWithin(line, from, to, taken) {
 
 // The sections a reference lends its document to, read from `p`, just after it: the rest of a
 // list, SDD006§2.4.1/§12; parentheses after a bare id, SDD001 (esp. §7, §8); a § after a space,
-// SDD007 §8. Each carries the edits that write it in the full form: `prefix` puts the id before
+// SDD007 §8. Each carries the edits that write it in the full form: `withId` puts the id before
 // its §, and `join` replaces the text that joined it to the reference before.
 function shortForms(line, p, anchored, taken) {
   const out = [];
@@ -840,7 +904,7 @@ function shortForms(line, p, anchored, taken) {
       if (paren) out.push(...itemsWithin(line, p + paren[0].indexOf('(') + 1, p + paren[0].length - 1, taken));
       return out;
     }
-    out.push({ ...it, prefix: false, join: { from: p, to: it.col, text: '' } });
+    out.push({ ...it, withId: false, join: { from: p, to: it.col, text: '' } });
     p = it.end;
   }
   for (;;) {
@@ -849,49 +913,52 @@ function shortForms(line, p, anchored, taken) {
     const sep = SEP_RE.exec(rest());
     const it = sep && itemAt(line, p + sep[0].length);
     if (!it || taken.has(it.col)) break;
-    out.push({ ...it, prefix: true, join: sep[0].includes('/') ? { from: p, to: it.col, text: ', ' } : null });
+    out.push({ ...it, withId: true, join: sep[0].includes('/') ? { from: p, to: it.col, text: ', ' } : null });
     p = it.end;
   }
   return out;
 }
 
-// The SDD references on one line. kind: full (SDD011§3.2 or SDD011), noncanonical (SDD11),
-// short (a § borrowing the document of the reference before it — see shortForms), prose (§8.1.2
-// of SDD006), link (a markdown link to an SDD file, looked for only when `markdown`), or bare
-// (§3.2 alone, looked for only when `bare`). A full, short or bare ref with a label where its
-// number belongs, SDD013§P6, has `tag` set and no anchor.
+// The references on one line. kind: full (SDD011§3.2 or SDD011), noncanonical (SDD11), short (a
+// § borrowing the document of the reference before it — see shortForms), prose (§8.1.2 of
+// SDD006), link (a markdown link to a doc's file, looked for only when `markdown`), or bare (§3.2
+// alone, looked for only when `bare`). Each but a bare one carries the doc's prefix and number. A
+// full, short or bare ref with a label where its number belongs, SDD013§P6, has `tag` set and no
+// anchor.
 function findRefs(line, { bare = false, markdown = false } = {}) {
   const refs = [];
   const taken = new Set();
   const spans = [];
   if (markdown) {
     for (const m of line.matchAll(LINK_RE)) {
-      const num = linkedDoc(m[2]);
-      if (num === null) continue;
+      const doc = linkedDoc(m[2]);
+      if (!doc) continue;
       const anchor = m[3] ? m[3].slice(1) : null;
-      refs.push({ col: m.index, kind: 'link', num, anchor, text: m[0] });
+      refs.push({ col: m.index, kind: 'link', prefix: doc.prefix, num: doc.num, anchor, text: m[0] });
       spans.push([m.index, m.index + m[0].length]);
       if (anchor) taken.add(m.index + m[0].length - m[3].length);
     }
   }
   for (const m of line.matchAll(PROSE_RE)) {
-    refs.push({ col: m.index, kind: 'prose', num: Number(m[2]), digits: m[2], anchor: m[1], text: m[0] });
+    const { anchor, prefix, digits } = m.groups;
+    refs.push({ col: m.index, kind: 'prose', prefix, num: Number(digits), digits, anchor, text: m[0] });
     taken.add(m.index);
   }
   for (const m of line.matchAll(REF_RE)) {
     if (spans.some(([a, b]) => m.index >= a && m.index < b)) continue;
     if (refs.some((r) => r.kind === 'prose' && m.index > r.col && m.index < r.col + r.text.length)) continue;
-    const digits = m[1];
+    const { prefix, digits, anchor, tag: label } = m.groups;
     const num = Number(digits);
-    const id = `SDD${digits}`;
-    const tag = m[3] && !isPlaceholder(m[3]) ? m[3] : null;
-    const kind = docId(num) === id ? 'full' : 'noncanonical';
-    const text = m[3] && !tag ? id : m[0];
-    refs.push({ col: m.index, kind, num, anchor: m[2] || null, tag, text });
-    if (m[2] || m[3]) taken.add(m.index + id.length);
-    for (const s of shortForms(line, m.index + text.length, Boolean(m[2] || tag), taken)) {
+    // The id as written, which a non-canonical spelling makes differ from docId.
+    const id = `${prefix}${digits}`;
+    const tag = label && !isPlaceholder(label) ? label : null;
+    const kind = docId(prefix, num) === id ? 'full' : 'noncanonical';
+    const text = label && !tag ? id : m[0];
+    refs.push({ col: m.index, kind, prefix, num, anchor: anchor || null, tag, text });
+    if (anchor || label) taken.add(m.index + id.length);
+    for (const s of shortForms(line, m.index + text.length, Boolean(anchor || tag), taken)) {
       taken.add(s.col);
-      refs.push({ ...s, kind: 'short', num, id, head: text });
+      refs.push({ ...s, kind: 'short', prefix, num, id, head: text });
     }
   }
   if (bare) {
@@ -904,9 +971,9 @@ function findRefs(line, { bare = false, markdown = false } = {}) {
   return refs.sort((a, b) => a.col - b.col);
 }
 
-// Every reference in a file, with its line index. In markdown, fenced code is skipped; in an
-// SDD's own files, so are the lines that define anchors rather than cite them — the index, the
-// breadcrumb, a section heading's anchor — and a bare §3.2 counts as a reference to that SDD. A
+// Every reference in a file, with its line index. In markdown, fenced code is skipped; in a doc's
+// own files, so are the lines that define anchors rather than cite them — the index, the
+// breadcrumb, a section heading's anchor — and a bare §3.2 counts as a reference to that doc. A
 // section's title is read for what it cites, (removed; see §3.6) or (SDD013§P6), but a bare label
 // in it is where that label is defined, not a citation: lint reports those.
 function refsInFile(name, lines, { markdown, inDoc }) {
@@ -926,7 +993,7 @@ function refsInFile(name, lines, { markdown, inDoc }) {
   }
   const out = [];
   lines.forEach((line, i) => {
-    if (skip.has(i) || (!line.includes('SDD') && !(inDoc && line.includes('§')))) return;
+    if (skip.has(i) || (!HINT_RE.test(line) && !(inDoc && line.includes('§')))) return;
     const from = titles.get(i) || 0;
     for (const ref of findRefs(line.slice(from), { bare: Boolean(inDoc), markdown })) {
       if (from && ref.kind === 'bare' && ref.tag) continue;
@@ -936,14 +1003,17 @@ function refsInFile(name, lines, { markdown, inDoc }) {
   return out;
 }
 
-// What is wrong with one reference, if anything. docsByNum maps a number to its SDDs (more than
-// one is a numbering clash, reported elsewhere); ownDoc is the SDD whose file holds the reference.
-function validateRef(ref, docsByNum, ownDoc) {
+// The id a reference points at: its own doc's for a bare one.
+const refId = (ref, ownDoc) => (ref.kind === 'bare' ? ownDoc.id : docId(ref.prefix, ref.num));
+
+// What is wrong with one reference, if anything. docsById maps an id to its docs (more than one
+// is a numbering clash, reported elsewhere); ownDoc is the doc whose file holds the reference.
+function validateRef(ref, docsById, ownDoc) {
   const err = (message) => ({ level: 'error', message });
-  if (ref.kind === 'noncanonical') return err(`write ${docId(ref.num)}, not ${ref.text.replace(/§.*/, '')}`);
-  const doc = ref.kind === 'bare' ? ownDoc : (docsByNum.get(ref.num) || [])[0];
-  const id = ref.kind === 'bare' ? ownDoc.id : docId(ref.num);
-  if (ref.tag) return err(doc ? tagMessage(id, ref.tag, doc.model, docsByNum) : `${id} does not exist`);
+  if (ref.kind === 'noncanonical') return err(`write ${docId(ref.prefix, ref.num)}, not ${ref.text.replace(/§.*/, '')}`);
+  const id = refId(ref, ownDoc);
+  const doc = ref.kind === 'bare' ? ownDoc : (docsById.get(id) || [])[0];
+  if (ref.tag) return err(doc ? tagMessage(id, ref.tag, doc.model, docsById) : `${id} does not exist`);
   const full = `${id}${ref.anchor ? `§${ref.anchor}` : ''}`;
   if (ref.kind === 'short') return err(`short form: write ${full}, not §${ref.anchor} after ${ref.head}`);
   if (ref.kind === 'prose') return err(`write ${full}, not "${ref.text}"`);
@@ -967,16 +1037,18 @@ function carriersOf(model, tag) {
 
 // A label cited where a number belongs. The sections whose titles carry the label are where it
 // likely points, so the message names them — while the headings still carry the labels. When the
-// doc it is cited in has none, the docs that do are named instead: a bare label is often another
-// doc's. They are candidates, not an answer.
-function tagMessage(id, tag, model, docsByNum) {
+// doc it is cited in has none, the docs of its type that do are named instead: a bare label is
+// often another doc's. They are candidates, not an answer.
+function tagMessage(id, tag, model, docsById) {
   const what = `"§${tag}" is not a section number`;
   const own = carriersOf(model, tag);
   if (own.length === 1) return `${what}; the one heading in ${id} that carries it is ${own[0]}`;
   if (own.length) return `${what}; the headings in ${id} that carry it: ${own.join(', ')}`;
-  const elsewhere = [...docsByNum.keys()]
-    .sort((a, b) => a - b)
-    .map((num) => docsByNum.get(num)[0])
+  const { prefix } = parseId(id);
+  const elsewhere = [...docsById.keys()]
+    .filter((other) => parseId(other).prefix === prefix)
+    .sort(compareIds)
+    .map((other) => docsById.get(other)[0])
     .filter((d) => d.id !== id)
     .map((d) => [d.id, carriersOf(d.model, tag)])
     .filter(([, found]) => found.length)
@@ -993,9 +1065,9 @@ function expandRefs(line) {
   let count = 0;
   for (const r of findRefs(line)) {
     if (r.kind === 'prose') {
-      edits.push([r.col, r.col + r.text.length, `SDD${r.digits}§${r.anchor}`]);
+      edits.push([r.col, r.col + r.text.length, `${r.prefix}${r.digits}§${r.anchor}`]);
     } else if (r.kind === 'short') {
-      if (r.prefix) edits.push([r.col, r.col, r.id]);
+      if (r.withId) edits.push([r.col, r.col, r.id]);
       if (r.join) edits.push([r.join.from, r.join.to, r.join.text]);
     } else {
       continue;
@@ -1029,11 +1101,15 @@ function rewriteDocLinks(line, idForFile) {
 module.exports = {
   README,
   ABSTRACT_MAX,
-  DOC_DIR_RE,
-  FLAT_FILE_RE,
+  TYPES,
+  typeOf,
+  HINT_RE,
   INDEX_OPEN,
   INDEX_CLOSE,
   docId,
+  parseId,
+  compareIds,
+  refId,
   isSourceFile,
   parentOf,
   compareAnchors,

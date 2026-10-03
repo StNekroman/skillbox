@@ -1,4 +1,4 @@
-// End to end: sdd-check.js as the to-sdd skill and the Stop hook run it, in throwaway
+// End to end: doc-check.js as the skills and the Stop hook run it, in throwaway
 // repositories — git ones when git is installed, since the hook and `refs --changed` read git.
 
 const { test, describe } = require('node:test');
@@ -7,12 +7,12 @@ const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
 
-const D = require('../../skills/to-sdd/scripts/lib/sdd-doc');
-const { loadConfig, loadDocs, citingFiles } = require('../../skills/to-sdd/scripts/sdd-check');
+const D = require('../doc-check/lib/doc-model');
+const { loadConfig, loadDocs, citingFiles } = require('../doc-check/doc-check');
 const { tempRoot, scriptEnv } = require('./helpers');
-const { body, section, readme, text } = require('./sdd-helpers');
+const { body, section, readme, text } = require('./doc-helpers');
 
-const SCRIPT = path.join(__dirname, '..', '..', 'skills', 'to-sdd', 'scripts', 'sdd-check.js');
+const SCRIPT = path.join(__dirname, '..', 'doc-check', 'doc-check.js');
 const HAS_GIT = spawnSync('git', ['--version']).status === 0;
 const needsGit = { skip: !HAS_GIT && 'git is not installed' };
 const CONFIG = { version: 1, paths: { sddRoot: 'docs/sdd' }, sdd: { maxLines: 40 } };
@@ -346,6 +346,15 @@ describe('lint', () => {
   });
 });
 
+test("the plugin's Stop hook runs this script", () => {
+  const plugin = path.join(__dirname, '..', '..');
+  const hooks = JSON.parse(fs.readFileSync(path.join(plugin, 'hooks', 'hooks.json'), 'utf8'));
+  const [command] = hooks.hooks.Stop.flatMap((h) => h.hooks.map((x) => x.command));
+  const script = /^node "\$\{CLAUDE_PLUGIN_ROOT\}\/(.+)" hook$/.exec(command);
+  assert.ok(script, command);
+  assert.equal(path.resolve(plugin, script[1]), SCRIPT);
+});
+
 describe('hook', needsGit, () => {
   test('is silent in a repository without the plugin config', (t) => {
     const root = repo(t, { 'a.md': ['x'] }, { config: null });
@@ -368,7 +377,7 @@ describe('hook', needsGit, () => {
     const reason = hook(root);
     assert.match(reason, /^SDD docs changed in this task break the SDD rules\. Repair them before you finish\.$/m);
     assert.match(reason, /Repair by hand first:\n {2}docs\/sdd\/SDD001-mail\/README\.md:\d+: §4\.1 has no parent: there is no §4\n/);
-    assert.match(reason, /Then run:\n {2}node ".+sdd-check\.js" fix SDD001\n/);
+    assert.match(reason, /Then run:\n {2}node ".+doc-check\.js" fix SDD001\n/);
     assert.match(reason, /README\.md:\d+: the index is out of date/);
   });
 
@@ -377,7 +386,7 @@ describe('hook', needsGit, () => {
     const entry = path.join(root, 'docs/sdd/SDD001-mail/README.md');
     fs.writeFileSync(entry, read(root, 'docs/sdd/SDD001-mail/README.md').replace('## §2 Delivery', '## §2 Delivery and bounces'));
     const reason = hook(root);
-    assert.match(reason, /\nRun:\n {2}node ".+sdd-check\.js" fix SDD001\n/);
+    assert.match(reason, /\nRun:\n {2}node ".+doc-check\.js" fix SDD001\n/);
     assert.doesNotMatch(reason, /by hand/);
 
     assert.equal(run(root, ['fix', 'SDD001']).status, 0);
