@@ -116,9 +116,9 @@ records the architecture it added — and writes nothing for a bug fix, a refact
 
 Each SDD is a folder, `SDDnnn-<slug>/`, whose `README.md` holds the abstract and a generated index.
 When a file passes `sdd.maxLines`, its largest subsections move into files named for their anchors,
-and a section file that fits back into its parent's is merged back, so the agent always reads whole
-files instead of grepping a long one. References are ids, `SDD001§3.2`, never paths, so nothing
-breaks when files split or merge.
+leaving behind a pointer — the heading, linking the new file — and a section file that fits back
+into its parent's is merged back, so the agent always reads whole files instead of grepping a long
+one. References are ids, `SDD001§3.2`, never paths, so nothing breaks when files split or merge.
 
 The plugin's Stop hook checks the SDDs changed in a turn before the turn ends, and sends problems
 back to the agent. The plugin sets it up in Claude Code; other agents can have it wired in by hand.

@@ -123,8 +123,9 @@ root for is a warning, "not checked", never an error.
 | `refs --changed` reports sections that link a changed file | no | yes |
 
 **`fix` refuses rather than guesses.** A doc with a structural problem — an anchor defined twice, a
-section with no parent, an unnumbered heading at section level — is left untouched, because moving
-text around it could misplace some. Everything else it repairs is mechanical and idempotent.
+section with no parent, an unnumbered heading at section level, text under a pointer — is left
+untouched, because moving text around it could misplace some. Everything else it repairs is
+mechanical and idempotent.
 
 **The layout is settled one move at a time, by size.** Each step rebuilds the model and takes the
 first move that applies: a section out of place goes to the file that holds its parent; a section
@@ -134,6 +135,30 @@ split when it passes the limit and goes on down to two-thirds — or to the limi
 section's own text alone is longer than two-thirds. Because a split begins only above the limit
 and a merge may fill only to two-thirds, and the merge is measured by building it rather than
 estimated, neither can undo the other, and the run ends.
+
+**A section that moves out leaves a pointer.** `moveOut` puts the section's heading, as a link to
+its new file, where the section was — `### [§3.2 Retries](3.2.md)` — and a merge puts the text back
+in place of its pointer, so a split and a merge are each other's inverse. Before every step the
+pointers are made to match the layout: one per section in a file of its own, in the file that holds
+its parent, added in anchor order where missing (which is how a doc split before pointers existed
+gets them), rewritten when its title or level is stale, and removed where none belongs. They count
+towards a file's lines like the index and breadcrumbs. Only a heading that is nothing but a link,
+labelled with an anchor, to the file named for that anchor is a pointer, so `fix` never removes a
+heading someone wrote. A pointer is not a section: `^#+ §3\.2 ` still finds one heading, references
+and links in a pointer are not read, and text under one is a structural problem, since `fix` cannot
+know whether it was meant for the section or for its parent.
+
+**Every index entry links its heading.** An entry is `[§3.2 Title](#32-title)` when the section is
+in `README.md`, `[§3.2 Title](3.md#32-title)` when it is elsewhere. The id is the one GitHub gives
+the heading, and VS Code too, whose markdown preview bundles github-slugger: the heading's rendered
+text — a link's label, a code span's content, no emphasis markers, escapes or HTML — lowercased,
+stripped of everything but letters, marks, digits, connector punctuation, spaces and hyphens, each
+space then a hyphen; a repeat within the file takes `-1`, `-2`. `§3.2 Retries & backoff` becomes
+`32-retries--backoff`. github-slugger's character class is a list built from Unicode 13; here it is
+`\p{Alphabetic}`, `\p{M}`, `\p{Nd}` and `\p{Pc}`, which agree with it on every character up to
+U+0870 and differ only on letters added since. Every heading in the file counts towards the
+numbering, a pointer's included. `check` reports an index that differs from the one `fix` writes,
+naming the entries that link nothing.
 
 **One grammar for references, shared by `check` and `migrate`.** `findRefs` in `lib/doc-model.js`
 reads every way a § can borrow the id before it: a list joined by commas, slashes, dashes, `and`
@@ -165,9 +190,9 @@ the names it deletes. A path is matched against the file list: exactly from the 
 not reported. A relative markdown link is resolved from the file it sits in, a leading `/` from
 the repository root, and must name a file, or a directory holding one, exactly — case included,
 as wherever else the repository is checked out; one that leaves the repository is reported too.
-URLs, in-page anchors, links in code spans or fences, the generated index and breadcrumbs, and
-links into a doc, which `check` reports, are not looked up. It needs no git; without it the walk
-supplies the file list.
+URLs, in-page anchors, links in code spans or fences, the generated index, breadcrumbs and
+pointers, and links into a doc, which `check` reports, are not looked up. It needs no git; without
+it the walk supplies the file list.
 
 **Links back.** A knowledge-base page may describe our code without the code citing it. For a type
 with `linkBack`, `refs` matches the changed files — or the files given — against what each page

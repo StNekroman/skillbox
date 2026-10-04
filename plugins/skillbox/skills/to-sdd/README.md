@@ -27,9 +27,10 @@ Each SDD is a folder under `paths.sddRoot`:
 docs/sdd/
   SDD001-email-notifications/
     README.md     ← title, an abstract of at most 500 characters, the generated index,
-                    and every section not moved out — §1, §2 and §4 here
+                    and every section not moved out — §1, §2 and §4 here, with a
+                    pointer to 3.md between §2 and §4
     3.md          ← §3, the largest, moved out when README.md passed the size limit,
-                    with its small subsections
+                    with its small subsections and a pointer to 3.2.md
     3.2.md        ← §3.2, moved out when 3.md passed it
 ```
 
@@ -47,9 +48,12 @@ docs/sdd/
   the limit and merging only up to two-thirds of it means neither undoes the other, and a few
   lines of editing do not move sections around. A section lives in `<anchor>.md`, or else in the
   file of its nearest parent section that has one. A small SDD stays one `README.md`.
+- **A moved section leaves a pointer.** Where it was, the file keeps its heading as a link to its
+  file, `### [§3.2 Retries with backoff](3.2.md)`, so whoever reads that file top to bottom meets
+  every subsection in order instead of a gap in the numbering.
 - **Generated, never hand-written**: the index in `README.md`, the breadcrumb at the top of each
-  section file, heading levels. The index links each section to the file holding it, so one read of
-  `README.md` is a map of the whole SDD.
+  section file, the pointers, heading levels. The index links each section's heading, in the file
+  holding it, so one read of `README.md` is a map of the whole SDD.
 - **The folder names are the way in.** An agent finds the SDD for an area by listing
   `paths.sddRoot`, so a title names the area in the words its code uses. Code cites the section at
   its entry point, which is the other way in.
@@ -90,7 +94,7 @@ internals and tests are documented in the plugin's
 | Command | What |
 |---|---|
 | `check [ID …]` | Every rule, including every reference to a doc anywhere in the repository |
-| `fix [ID …]` | Regenerates indexes and breadcrumbs, sets heading levels, puts misplaced sections where they belong, merges back section files that fit, splits files over the limit |
+| `fix [ID …]` | Regenerates indexes, breadcrumbs and pointers, sets heading levels, puts misplaced sections where they belong, merges back section files that fit, splits files over the limit |
 | `lint [ID …]` | Leads for the content rules, all warnings: wording that tells history, fenced code, names in backticks the code no longer has, links that point at nothing |
 | `refs --changed` | The sections the changed code cites, and the knowledge-base sections that link changed files — how the skill finds what a change may have made wrong |
 | `refs --to ID[§x.y]` | Everything that cites a doc or a section |

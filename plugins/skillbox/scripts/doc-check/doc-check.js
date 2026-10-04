@@ -6,9 +6,10 @@
 // as the plugin's Stop hook.
 // Usage: node doc-check.js <command> [ID ...] [--dry-run]
 //   check [ID ...]              every rule, references from code included; exit 1 on an error
-//   fix [ID ...]                regenerate indexes and breadcrumbs, set heading levels, put
-//                               sections where they belong, merge back section files that fit,
-//                               move the largest sections out of files over the limit; then check
+//   fix [ID ...]                regenerate indexes, breadcrumbs and pointers, set heading levels,
+//                               put sections where they belong, merge back section files that
+//                               fit, move the largest sections out of files over the limit; then
+//                               check
 //   migrate                     move single-file SDDs into folders, turn links to them into ids,
 //                               expand short-form references across the repository; then fix
 //   lint [ID ...]               content leads for the agent, all warnings: wording that tells

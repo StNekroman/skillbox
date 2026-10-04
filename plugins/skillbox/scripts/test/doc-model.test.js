@@ -12,7 +12,8 @@ const only = (lines) => new Map([[README, lines]]);
 
 // A doc's own text in reading order, whichever files hold it: what README.md has above its first
 // section, then every section's text in anchor order. Without what fix generates or drops on the
-// way: the index, breadcrumbs, blank lines, thematic breaks and the number of #s on a heading.
+// way: the index, breadcrumbs, pointers, blank lines, thematic breaks and the number of #s on a
+// heading.
 function prose(files) {
   const top = [];
   const chunks = [];
@@ -29,7 +30,7 @@ function prose(files) {
   }
   chunks.sort((a, b) => D.compareAnchors(a.anchor, b.anchor));
   return [...top, ...chunks.flatMap((c) => c.lines)]
-    .filter((l) => l.trim() && !/^-{3,}$/.test(l.trim()))
+    .filter((l) => l.trim() && !/^-{3,}$/.test(l.trim()) && !/^#{1,6} \[§/.test(l))
     .map((l) => l.replace(/^#{1,6} /, '# '));
 }
 
@@ -55,6 +56,16 @@ describe('scanning', () => {
 
   test('sections sort by number, part by part, parents first', () => {
     assert.deepEqual(['3.10', '3', '10', '3.2', '3.2.1'].sort(D.compareAnchors), ['3', '3.2', '3.2.1', '3.10', '10']);
+  });
+
+  test('a pointer is a heading that only links the file named for its anchor', () => {
+    const pointers = (line) => D.scanFile('2.md', [line]).headings.map((h) => (h.pointer ? h.pointer.anchor : null));
+    assert.deepEqual(pointers('### [§2.2 Sellers \\[beta\\]](2.2.md)'), ['2.2']);
+    assert.deepEqual(pointers('### [§2.2](2.2.md)'), ['2.2']);
+    assert.deepEqual(
+      ['### [§2.2 Sellers](2.3.md)', '### [§2.2 Sellers](https://example.com)', '### [§2.2 Sellers](2.2.md) and more', '### [Sellers](2.2.md)'].flatMap(pointers),
+      [null, null, null, null],
+    );
   });
 });
 
@@ -152,6 +163,173 @@ describe('section files', () => {
   });
 });
 
+describe('the index', () => {
+  test('a heading’s id is the one GitHub and VS Code give it: from its rendered text, punctuation dropped, spaces hyphenated', () => {
+    assert.deepEqual(
+      [
+        '§1 Overview & scope',
+        '§1.1 Platform identity: the platform is **Vendo**, DroneHack is a shop',
+        '§2.2.2.5 `contact_info` also carries working hours and реквізити',
+        '§6 Orders (ripple — largest; updates SDD006)',
+        '§1 _Vendo_ beats snake_case, and a _ b stays',
+        '§1 C\\# client <br> and `` a`b ``',
+        '[§2.3 The `offers` table](2.3.md)',
+      ].map(D.slugOf),
+      [
+        '1-overview--scope',
+        '11-platform-identity-the-platform-is-vendo-dronehack-is-a-shop',
+        '2225-contact_info-also-carries-working-hours-and-реквізити',
+        '6-orders-ripple--largest-updates-sdd006',
+        '1-vendo-beats-snake_case-and-a-_-b-stays',
+        '1-c-client--and-ab',
+        '23-the-offers-table',
+      ],
+    );
+  });
+
+  test('every entry links its heading: in README.md by #id, elsewhere by file#id', () => {
+    const files = D.fixDoc(only(readme('SDD001', 'A', [...section('1', 'One'), ...section('2', 'Two', body('two', 12)), ...section('2.1', 'Sub')])), ctx(30)).files;
+    assert.ok(files.has('2.md'));
+    const out = files.get(README);
+    assert.deepEqual(out.slice(out.indexOf(D.INDEX_OPEN) + 1, out.indexOf(D.INDEX_CLOSE)), [
+      '- [§1 One](#1-one)',
+      '- [§2 Two](2.md#2-two)',
+      '  - [§2.1 Sub](2.md#21-sub)',
+    ]);
+  });
+
+  test('a second heading with the same id in one file links the id it is numbered with', () => {
+    // §1.1 Sub and §11 Sub both slug to 11-sub; the later one is 11-sub-1.
+    const rest = [...section('1', 'One'), ...section('1.1', 'Sub')];
+    for (let n = 2; n <= 10; n++) rest.push(...section(String(n), `Part ${n}`));
+    rest.push(...section('11', 'Sub'));
+    const out = D.fixDoc(only(readme('SDD001', 'A', rest)), ctx()).files.get(README);
+    assert.ok(out.includes('  - [§1.1 Sub](#11-sub)'));
+    assert.ok(out.includes('- [§11 Sub](#11-sub-1)'));
+  });
+
+  test('check names the entries of an older index that link nothing, and fix links them', () => {
+    const files = D.fixDoc(mail(), ctx()).files;
+    const old = files.get(README).map((l) => l.replace(/^(\s*)- \[(.*)\]\(#[^)]*\)$/, '$1- $2'));
+    assert.ok(old.includes('- §1 Overview'));
+    assert.deepEqual(messages(issuesOf(only(old))), [
+      `README.md:${old.indexOf(D.INDEX_OPEN) + 1}: the index is out of date: §1, §2 and §2.1 have no link`,
+    ]);
+    const res = D.fixDoc(only(old), ctx());
+    assert.deepEqual(res.actions, ['regenerated the index']);
+    assert.deepEqual(res.files.get(README), files.get(README));
+  });
+});
+
+describe('pointers', () => {
+  // At a limit of 30: §1, §2 and §3 leave README.md, and §2.2 and §2.3 leave 2.md, between §2.1
+  // and §2.4, which stay.
+  const shop = () =>
+    only([
+      ...readme('SDD001', 'Shop'),
+      ...section('1', 'Overview', body('one', 2)),
+      ...section('2', 'Domain', body('two', 2)),
+      ...section('2.1', 'Catalog', body('two-one', 2)),
+      ...section('2.2', 'Sellers', body('two-two', 12)),
+      ...section('2.3', 'Offers', body('two-three', 12)),
+      ...section('2.4', 'Counters', body('two-four', 2)),
+      ...section('3', 'Permissions', body('three', 2)),
+    ]);
+  const split = () => D.fixDoc(shop(), ctx(30)).files;
+
+  // The files as fix wrote them before it wrote pointers.
+  function withoutPointers(files) {
+    const out = new Map();
+    for (const [name, lines] of files) {
+      const kept = [];
+      for (const line of lines) {
+        if (!/^#{1,6} \[§/.test(line)) kept.push(line);
+        else if (kept.length && !kept[kept.length - 1].trim()) kept.pop();
+      }
+      out.set(name, kept);
+    }
+    return out;
+  }
+
+  test('the file a section left reads in order: a pointer to its file stands in its place', () => {
+    const files = split();
+    assert.deepEqual([...files.keys()].sort(), ['1.md', '2.2.md', '2.3.md', '2.md', '3.md', README]);
+    assert.deepEqual(files.get('2.md').filter((l) => l.startsWith('#')), [
+      '## §2 Domain',
+      '### §2.1 Catalog',
+      '### [§2.2 Sellers](2.2.md)',
+      '### [§2.3 Offers](2.3.md)',
+      '### §2.4 Counters',
+    ]);
+    const readmeHeadings = files.get(README).filter((l) => l.startsWith('## '));
+    assert.deepEqual(readmeHeadings, ['## Index', '## [§1 Overview](1.md)', '## [§2 Domain](2.md)', '## [§3 Permissions](3.md)']);
+  });
+
+  test('a doc split before pointers existed gets each one where a split would have put it', () => {
+    const old = withoutPointers(split());
+    assert.deepEqual(messages(issuesOf(old, 30)), [
+      'README.md: no pointer to §1, which is in 1.md; fix adds it',
+      'README.md: no pointer to §2, which is in 2.md; fix adds it',
+      '2.md: no pointer to §2.2, which is in 2.2.md; fix adds it',
+      '2.md: no pointer to §2.3, which is in 2.3.md; fix adds it',
+      'README.md: no pointer to §3, which is in 3.md; fix adds it',
+    ]);
+    const res = D.fixDoc(old, ctx(30));
+    assert.deepEqual(res.actions, ['added 5 pointers']);
+    assert.deepEqual([...res.files], [...split()]);
+    assert.deepEqual(D.fixDoc(res.files, ctx(30)).actions, []);
+  });
+
+  test('a pointer where none belongs is removed: to a section in no file of its own, in the wrong file, twice, or to nothing', () => {
+    const files = split();
+    const two = files.get('2.md');
+    const at = two.indexOf('### §2.4 Counters');
+    files.set('2.md', [...two.slice(0, at), '### [§2.4 Counters](2.4.md)', '', '### [§2.3 Offers](2.3.md)', '', ...two.slice(at)]);
+    files.set(README, [...files.get(README), '', '### [§2.2 Sellers](2.2.md)', '', '## [§9 Gone](9.md)']);
+    const end = files.get(README).length;
+    // The stray pointer to §2.4 comes first in 2.md, so it takes the id 24-counters, as it would on
+    // GitHub, and the index entry of §2.4 must point at 24-counters-1 until it is gone.
+    assert.deepEqual(messages(issuesOf(files, 30)), [
+      `README.md:${files.get(README).indexOf(D.INDEX_OPEN) + 1}: the index is out of date`,
+      `README.md:${end - 2}: a pointer to §2.2 belongs in 2.md, not here; fix removes it`,
+      `README.md:${end}: a pointer to §9, which does not exist; fix removes it`,
+      `2.md:${at + 1}: a pointer to §2.4, which has no file of its own; fix removes it`,
+      `2.md:${at + 3}: a second pointer to §2.3; fix removes it`,
+    ]);
+    const res = D.fixDoc(files, ctx(30));
+    assert.deepEqual(res.actions, ['removed 4 pointers']);
+    assert.deepEqual([...res.files], [...split()]);
+  });
+
+  test('text under a pointer stops fix: it belongs in the section the pointer stands for', () => {
+    for (const stray of [['A line meant for §2.2.'], ['#### Notes on sellers', '', 'More.']]) {
+      const files = split();
+      const two = files.get('2.md');
+      const at = two.indexOf('### [§2.2 Sellers](2.2.md)');
+      files.set('2.md', [...two.slice(0, at + 1), '', ...stray, ...two.slice(at + 1)]);
+      const res = D.fixDoc(files, ctx(30));
+      assert.equal(res.files, files);
+      assert.deepEqual(messages(res.blocked), [
+        `2.md:${at + 3}: text under the pointer to §2.2; a pointer stands alone: move the text into the section's own file, or under a heading of its own`,
+      ]);
+    }
+  });
+
+  test('a section file whose parent has none goes back in place of its pointer, which needed no repair', () => {
+    const files = new Map([
+      [README, readme('SDD001', 'A', [...section('1', 'One'), '### [§1.1 Sub](1.1.md)', '', ...section('2', 'Two')])],
+      ['1.1.md', ['> [SDD001 — A](README.md) › [§1 One](1.md)', '', ...section('1.1', 'Sub')]],
+    ]);
+    assert.deepEqual(messages(issuesOf(files).filter((x) => /pointer/.test(x.message))), []);
+    const res = D.fixDoc(files, ctx());
+    assert.deepEqual(res.actions, ['moved §1.1 into README.md, where its parent is', 'regenerated the index']);
+    assert.deepEqual(
+      res.files.get(README).filter((l) => /^#{2,} /.test(l)),
+      ['## Index', '## §1 One', '### §1.1 Sub', '## §2 Two'],
+    );
+  });
+});
+
 describe('text', () => {
   test('a line-number citation is an error, outside code fences', () => {
     const files = only(
@@ -228,16 +406,16 @@ describe('fix', () => {
       '## Index',
       '',
       D.INDEX_OPEN,
-      '- §1 Overview',
-      '- §2 Delivery',
-      '  - §2.1 Retries',
+      '- [§1 Overview](#1-overview)',
+      '- [§2 Delivery](#2-delivery)',
+      '  - [§2.1 Retries](#21-retries)',
       D.INDEX_CLOSE,
       '',
       '## §1 Overview',
     ]);
   });
 
-  test('over the limit, sections move out largest first, until README.md keeps only the rest', () => {
+  test('over the limit, sections move out largest first, each leaving a pointer to its file', () => {
     const res = D.fixDoc(mail(), ctx(20));
     assert.deepEqual([...res.files.keys()].sort(), ['1.md', '2.md', README]);
     assert.deepEqual(res.files.get(README), [
@@ -248,10 +426,14 @@ describe('fix', () => {
       '## Index',
       '',
       D.INDEX_OPEN,
-      '- [§1 Overview](1.md)',
-      '- [§2 Delivery](2.md)',
-      '  - [§2.1 Retries](2.md)',
+      '- [§1 Overview](1.md#1-overview)',
+      '- [§2 Delivery](2.md#2-delivery)',
+      '  - [§2.1 Retries](2.md#21-retries)',
       D.INDEX_CLOSE,
+      '',
+      '## [§1 Overview](1.md)',
+      '',
+      '## [§2 Delivery](2.md)',
     ]);
     assert.deepEqual(res.files.get('2.md'), [
       '> [SDD001 — Mail](README.md)',
@@ -275,42 +457,59 @@ describe('fix', () => {
       ...section('2.1', 'Retries', body('two-one', 5)),
       ...section('2.2', 'Backoff', body('two-two', 5)),
     ]);
-    const res = D.fixDoc(input, ctx(12));
+    const res = D.fixDoc(input, ctx(16));
     assert.deepEqual(res.actions, [
       'moved §1, §2 out of README.md into their own files',
       'moved §2.1, §2.2 out of 2.md into their own files',
       'regenerated the index',
     ]);
     assert.deepEqual(res.files.get('2.1.md').slice(0, 3), ['> [SDD001 — Mail](README.md) › [§2 Delivery](2.md)', '', '### §2.1 Retries']);
-    assert.deepEqual(res.files.get('2.md'), ['> [SDD001 — Mail](README.md)', '', '## §2 Delivery', '', ...body('two', 2)]);
-    assert.ok(res.files.get(README).includes('  - [§2.2 Backoff](2.2.md)'));
-    assert.deepEqual(issuesOf(res.files, 12), []);
+    assert.deepEqual(res.files.get('2.md'), [
+      '> [SDD001 — Mail](README.md)',
+      '',
+      '## §2 Delivery',
+      '',
+      ...body('two', 2),
+      '',
+      '### [§2.1 Retries](2.1.md)',
+      '',
+      '### [§2.2 Backoff](2.2.md)',
+    ]);
+    assert.ok(res.files.get(README).includes('  - [§2.2 Backoff](2.2.md#22-backoff)'));
+    assert.deepEqual(issuesOf(res.files, 16), []);
   });
 
   test('only the largest move out: the small sections stay with their parent', () => {
-    // 34 lines at a limit of 30: moving §2 out leaves 19, within two-thirds of 30.
+    // 34 lines at a limit of 32: moving §2 out leaves 21, its pointer included, within two-thirds
+    // of 32.
     const input = only(readme('SDD001', 'A', [...section('1', 'One'), ...section('2', 'Two', body('two', 12)), ...section('3', 'Three')]));
-    const res = D.fixDoc(input, ctx(30));
+    const res = D.fixDoc(input, ctx(32));
     assert.deepEqual([...res.files.keys()].sort(), ['2.md', README]);
     assert.deepEqual(res.actions, ['moved §2 out of README.md into its own file', 'regenerated the index']);
     const out = res.files.get(README);
-    assert.deepEqual(out.slice(out.indexOf(D.INDEX_OPEN) + 1, out.indexOf(D.INDEX_CLOSE)), ['- §1 One', '- [§2 Two](2.md)', '- §3 Three']);
-    assert.ok(out.length <= 20, `${out.length} lines`);
-    assert.deepEqual(issuesOf(res.files, 30), []);
-    assert.deepEqual(D.fixDoc(res.files, ctx(30)).actions, []);
+    assert.deepEqual(out.slice(out.indexOf(D.INDEX_OPEN) + 1, out.indexOf(D.INDEX_CLOSE)), ['- [§1 One](#1-one)', '- [§2 Two](2.md#2-two)', '- [§3 Three](#3-three)']);
+    assert.deepEqual(
+      out.filter((l) => l.startsWith('## ')),
+      ['## Index', '## §1 One', '## [§2 Two](2.md)', '## §3 Three'],
+      'the pointer stands where §2 was',
+    );
+    assert.ok(out.length <= 21, `${out.length} lines`);
+    assert.deepEqual(issuesOf(res.files, 32), []);
+    assert.deepEqual(D.fixDoc(res.files, ctx(32)).actions, []);
   });
 
   test('when a section’s own text is over two-thirds of the limit, its file is split only down to the limit', () => {
-    // 1.md: §1's own text is 17 lines, over 13, so the file stops at 20 with §1.2 still in it.
+    // 1.md: §1's own text, with the pointer to §1.1, is 18 lines, over 14, so the file stops at 22
+    // with §1.2 still in it.
     const input = only(
       readme('SDD001', 'A', [...section('1', 'One', body('one', 12)), ...section('1.1', 'Sub', body('sub', 5)), ...section('1.2', 'Small')]),
     );
-    const res = D.fixDoc(input, ctx(20));
+    const res = D.fixDoc(input, ctx(22));
     assert.deepEqual([...res.files.keys()].sort(), ['1.1.md', '1.md', README]);
     assert.ok(res.files.get('1.md').includes('### §1.2 Small'));
-    assert.ok(res.files.get('1.md').length <= 20, `${res.files.get('1.md').length} lines`);
-    assert.deepEqual(issuesOf(res.files, 20), []);
-    assert.deepEqual(D.fixDoc(res.files, ctx(20)).actions, []);
+    assert.ok(res.files.get('1.md').length <= 22, `${res.files.get('1.md').length} lines`);
+    assert.deepEqual(issuesOf(res.files, 22), []);
+    assert.deepEqual(D.fixDoc(res.files, ctx(22)).actions, []);
   });
 
   test('a section file that fits back into its parent’s file is merged back; one that does not stays', () => {
@@ -321,40 +520,48 @@ describe('fix', () => {
     assert.deepEqual([...split.keys()].sort(), ['1.md', '2.md', '3.md', README]);
     assert.deepEqual(
       messages(issuesOf(split, 40).filter((x) => x.fixable)),
-      ['1.md: §1 fits back into README.md, 16 lines together, within 26; fix merges it', '3.md: §3 fits back into README.md, 16 lines together, within 26; fix merges it'],
+      ['1.md: §1 fits back into README.md, 20 lines together, within 26; fix merges it', '3.md: §3 fits back into README.md, 20 lines together, within 26; fix merges it'],
     );
     const res = D.fixDoc(split, ctx(40));
     assert.deepEqual(res.actions, ['merged §1, §3 back into README.md', 'regenerated the index']);
     assert.deepEqual([...res.files.keys()].sort(), ['2.md', README]);
+    assert.deepEqual(
+      res.files.get(README).filter((l) => l.startsWith('## §') || l.startsWith('## [')),
+      ['## §1 One', '## [§2 Two](2.md)', '## §3 Three'],
+      'each text takes the place of its pointer',
+    );
     assert.deepEqual(prose(res.files), prose(split));
     assert.deepEqual(issuesOf(res.files, 40), []);
   });
 
   test('a new section written in its parent’s file stays there while the file has room', () => {
-    const files = D.fixDoc(mail(), ctx(20)).files;
+    const files = D.fixDoc(mail(), ctx(22)).files;
     files.set(README, [...files.get(README), '', ...section('3', 'Late addition')]);
-    const res = D.fixDoc(files, ctx(20));
+    const res = D.fixDoc(files, ctx(22));
     assert.deepEqual(res.actions, ['regenerated the index']);
     assert.ok(!res.files.has('3.md'));
-    assert.ok(res.files.get(README).includes('- §3 Late addition'));
-    assert.deepEqual(issuesOf(res.files, 20), []);
+    assert.ok(res.files.get(README).includes('- [§3 Late addition](#3-late-addition)'));
+    assert.deepEqual(issuesOf(res.files, 22), []);
   });
 
-  test('a title change refreshes the index and breadcrumbs, and renames no file', () => {
+  test('a title change refreshes the index, breadcrumbs and pointer, and renames no file', () => {
     const files = D.fixDoc(
       only([...readme('SDD001', 'Mail'), ...section('1', 'Overview', body('one', 3)), ...section('2', 'Delivery', body('two', 2)), ...section('2.1', 'Retries', body('two-one', 5)), ...section('2.2', 'Backoff', body('two-two', 5))]),
-      ctx(12),
+      ctx(16),
     ).files;
     const names = [...files.keys()].sort();
     files.set('2.md', files.get('2.md').map((l) => (l === '## §2 Delivery' ? '## §2 Delivery and bounces' : l)));
-    assert.deepEqual(
-      issuesOf(files, 12).map((x) => `${x.file}: ${x.message}`),
-      ['README.md: the index is out of date', '2.1.md: the breadcrumb is out of date', '2.2.md: the breadcrumb is out of date'],
-    );
-    const res = D.fixDoc(files, ctx(12));
-    assert.deepEqual(res.actions, ['updated 2 breadcrumbs', 'regenerated the index']);
+    assert.deepEqual(issuesOf(files, 16).map((x) => `${x.file}: ${x.message}`), [
+      'README.md: the index is out of date',
+      '2.1.md: the breadcrumb is out of date',
+      '2.2.md: the breadcrumb is out of date',
+      'README.md: the pointer to §2 is out of date',
+    ]);
+    const res = D.fixDoc(files, ctx(16));
+    assert.deepEqual(res.actions, ['updated 1 pointer', 'updated 2 breadcrumbs', 'regenerated the index']);
     assert.deepEqual([...res.files.keys()].sort(), names);
     assert.equal(res.files.get('2.2.md')[0], '> [SDD001 — Mail](README.md) › [§2 Delivery and bounces](2.md)');
+    assert.ok(res.files.get(README).includes('## [§2 Delivery and bounces](2.md)'));
   });
 
   test('a section written just above the index does not carry the index away when it moves', () => {
@@ -369,7 +576,7 @@ describe('fix', () => {
     ]);
     const res = D.fixDoc(input, ctx(12));
     assert.deepEqual(res.files.get('2.md').slice(2), ['## §2 Two', '', ...body('two', 4)]);
-    assert.deepEqual(res.files.get(README).slice(-4), [D.INDEX_OPEN, '- [§1 One](1.md)', '- [§2 Two](2.md)', D.INDEX_CLOSE]);
+    assert.deepEqual(res.files.get(README).slice(-4), [D.INDEX_OPEN, '- [§1 One](1.md#1-one)', '- [§2 Two](2.md#2-two)', D.INDEX_CLOSE]);
   });
 
   test('a section over the limit with no subsections is reported, not cut', () => {
@@ -392,7 +599,7 @@ describe('fix', () => {
       '## Index',
       '',
       D.INDEX_OPEN,
-      '- §1 Overview',
+      '- [§1 Overview](#1-overview)',
       D.INDEX_CLOSE,
       '',
       '---',
@@ -414,7 +621,7 @@ describe('fix', () => {
       '## Index',
       '',
       D.INDEX_OPEN,
-      '- §1 Overview',
+      '- [§1 Overview](#1-overview)',
       D.INDEX_CLOSE,
       '',
       'A closing remark.',
@@ -426,18 +633,18 @@ describe('fix', () => {
 
   test('a title not yet in the SDD form names the doc by its id in the breadcrumb, so fix is not blocked later', () => {
     const input = only(['# Mail, no id yet', '', 'What it covers.', '', ...section('1', 'Overview', body('one', 3)), ...section('2', 'Delivery', body('two', 3))]);
-    const res = D.fixDoc(input, ctx(12));
+    const res = D.fixDoc(input, ctx(14));
     assert.equal(res.blocked, null);
     assert.equal(res.files.get('2.md')[0], '> [SDD001](README.md)');
-    const after = issuesOf(res.files, 12);
+    const after = issuesOf(res.files, 14);
     assert.ok(!after.some((x) => x.structural), messages(after).join('\n'));
 
     res.files.set(README, res.files.get(README).map((l) => (l === '# Mail, no id yet' ? '# SDD001 — Mail' : l)));
-    const again = D.fixDoc(res.files, ctx(12));
+    const again = D.fixDoc(res.files, ctx(14));
     assert.equal(again.blocked, null);
     assert.deepEqual(again.actions, ['updated 2 breadcrumbs']);
     assert.equal(again.files.get('2.md')[0], '> [SDD001 — Mail](README.md)');
-    assert.deepEqual(issuesOf(again.files, 12), []);
+    assert.deepEqual(issuesOf(again.files, 14), []);
   });
 
   // Generated docs, every shape fix meets: nesting four deep, a code fence holding a fake section
@@ -558,8 +765,19 @@ describe('references', () => {
     assert.deepEqual(kinds('as §3.2 says', { bare: true }), ['bare:-:3.2']);
   });
 
-  test('in an SDD file, headings, the breadcrumb and fenced code define anchors rather than cite them', () => {
-    const lines = ['> [SDD001 — A](README.md) › [§1 One](1.md)', '', '### §1.2 Two', '', 'see §1.1 and SDD002§4', '```', 'SDD404§1', '```'];
+  test('in an SDD file, headings, the breadcrumb, pointers and fenced code define anchors rather than cite them', () => {
+    const lines = [
+      '> [SDD001 — A](README.md) › [§1 One](1.md)',
+      '',
+      '### §1.2 Two',
+      '',
+      'see §1.1 and SDD002§4',
+      '```',
+      'SDD404§1',
+      '```',
+      '',
+      '#### [§1.2.1 (removed; see §1.1)](1.2.1.md)',
+    ];
     const refs = D.refsInFile('1.2.md', lines, { markdown: true, inDoc: true });
     assert.deepEqual(refs.map((r) => `${r.i}:${r.kind}:${r.anchor}`), ['4:bare:1.1', '4:full:4']);
   });

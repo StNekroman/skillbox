@@ -278,7 +278,7 @@ describe('migrate', () => {
     assert.match(read(root, 'docs/sdd/SDD001-mail/2.md'), /^Rates come from SDD002§1\.$/m);
     assert.match(read(root, 'docs/sdd/SDD001-mail/2.md'), /^Tables: SDD002§1 \(rates\), SDD002§2 \(zones\); §1 here\.$/m);
     const entry = read(root, 'docs/sdd/SDD001-mail/README.md');
-    assert.ok(entry.includes(`${D.INDEX_OPEN}\n- [§1 Overview](1.md)\n- [§2 Delivery](2.md)\n${D.INDEX_CLOSE}`), entry);
+    assert.ok(entry.includes(`${D.INDEX_OPEN}\n- [§1 Overview](1.md#1-overview)\n- [§2 Delivery](2.md#2-delivery)\n${D.INDEX_CLOSE}`), entry);
     assert.doesNotMatch(entry, /\*\*§1 Overview\*\*/);
     assert.equal(run(root, ['check']).status, 0);
   });

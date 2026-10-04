@@ -21,7 +21,7 @@ SDDs sit beside the repository's knowledge base: pages about the world outside t
 4. **Find the SDDs the change touches.**
    - Run `refs --changed`. It lists every section the changed code cites, where each section lives, and which lines cite it. It also lists the knowledge-base sections that link a changed file: keep those for the report, and leave the pages alone.
    - For an area the change entered without citing it, list the folders in `paths.sddRoot`. When a folder name is not enough, read the first paragraph of its `README.md`.
-5. **Read each affected SDD.** Start with its `README.md`: the abstract, then the index. Every index entry links the file that holds its section. Then read the sections the change touches, and their parents.
+5. **Read each affected SDD.** Start with its `README.md`: the abstract, then the index. Every index entry links its section's heading, in the file that holds it: `#<id>` in `README.md` itself, `<file>#<id>` elsewhere. Then read the sections the change touches, and their parents.
 6. **Decide what each SDD needs:** corrected statements, new sections, a new SDD, or nothing.
 7. **Write it**, following [the format](references/format.md) and `Content`. Read the format before you write.
 8. **Run `fix`, then `check`, then `lint`**, all scoped to the SDDs you wrote. Repair what `check` still reports. Each `lint` warning is a lead: confirm it against the code, and correct the text where it is wrong.
@@ -109,14 +109,14 @@ node "${CLAUDE_SKILL_DIR}/scripts/doc-check.js" <command>
 | `refs --changed` | Step 4: the sections that changed code cites, and the knowledge-base sections that link changed files |
 | `refs --to SDDnnn§x.y` | Before removing or renumbering a section: everything that cites it |
 | `next SDD` | Before creating an SDD: the id it takes |
-| `fix SDDnnn …` | After writing. It regenerates the index and breadcrumbs, sets heading levels, puts sections where they belong, merges back section files that fit, and moves the largest sections out of files over the limit. It rewrites, creates and deletes files, so read a file again before editing it further |
+| `fix SDDnnn …` | After writing. It regenerates the index, breadcrumbs and pointers, sets heading levels, puts sections where they belong, merges back section files that fit, and moves the largest sections out of files over the limit. It rewrites, creates and deletes files, so read a file again before editing it further |
 | `check SDDnnn …` | After `fix`. It runs every rule, including references to those SDDs from anywhere in the repository |
 | `lint SDDnnn …` | After `check`. Leads for the `Content` rules, all warnings: wording that tells history, fenced code, names in backticks that the code no longer has, and links that point at nothing |
 | `migrate --dry-run`, `migrate` | Single-file SDDs into folders, and references into the full form. See `SDDs in the old format` |
 
 ### After fix and check
 
-`fix` refuses to touch a doc with a structural problem: an anchor defined twice, a section whose parent does not exist, or an unnumbered heading at section level. Repair those by hand first.
+`fix` refuses to touch a doc with a structural problem: an anchor defined twice, a section whose parent does not exist, an unnumbered heading at section level, or text under a pointer. Repair those by hand first.
 
 `check` then lists what fix cannot repair. The usual cases:
 

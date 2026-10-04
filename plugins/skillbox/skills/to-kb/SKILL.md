@@ -76,11 +76,11 @@ node "${CLAUDE_SKILL_DIR}/scripts/doc-check.js" <command>
 |---|---|
 | `next KBDOC` | Before creating a page: the id it takes |
 | `refs --to KBDOCnnn§x.y` | Before rewriting or removing a section: the SDDs and code that cite it, which may need the same correction |
-| `fix KBDOCnnn …` | After writing. It regenerates the index and breadcrumbs, sets heading levels, puts sections where they belong, merges back section files that fit, and moves the largest sections out of files over the limit. It rewrites, creates and deletes files, so read a file again before editing it further |
+| `fix KBDOCnnn …` | After writing. It regenerates the index, breadcrumbs and pointers, sets heading levels, puts sections where they belong, merges back section files that fit, and moves the largest sections out of files over the limit. It rewrites, creates and deletes files, so read a file again before editing it further |
 | `check KBDOCnnn …` | After `fix`. It runs every rule, including references to those pages from anywhere in the repository |
 | `lint KBDOCnnn …` | After `check`. On a knowledge-base page it reports labels in titles, paths in backticks the repository does not have, and links that point at nothing. It does not flag history wording, code samples or outside names: on these pages those are content |
 
-`fix` refuses to touch a page with a structural problem: an anchor defined twice, a section whose parent does not exist, or an unnumbered heading at section level. Repair those by hand first, then run it again. `check` then lists what fix cannot repair: an abstract over 500 characters, a reference to a section that does not exist, a label where a section number belongs, a section over the limit with no subsections to move out.
+`fix` refuses to touch a page with a structural problem: an anchor defined twice, a section whose parent does not exist, an unnumbered heading at section level, or text under a pointer. Repair those by hand first, then run it again. `check` then lists what fix cannot repair: an abstract over 500 characters, a reference to a section that does not exist, a label where a section number belongs, a section over the limit with no subsections to move out.
 
 The Stop hook, where it is set up, runs the same rules at the end of every turn on the docs changed since `HEAD`. When it sends the turn back, do what it says. Without it, step 7 is the only check, so never skip it.
 

@@ -5,6 +5,9 @@
 // abstract, the generated index, and every section not moved out yet — plus one file per
 // moved-out section, named for its anchor: 3.md, 3.2.md. A section is a heading that carries its
 // anchor, `### §3.2 Title`, so a reference like SDD011§3.2 finds its heading wherever it lives.
+// Where a section moved out, the file that holds its parent keeps a pointer in its place: the
+// heading as a link to the section's file, `### [§3.2 Title](3.2.md)`, so that file still reads
+// in order.
 // Every doc type in TYPES shares this format; they differ in where they live and in what lint
 // looks for.
 //
@@ -72,6 +75,9 @@ const ANCHOR = `${NUM}(?:\\.${NUM})*`;
 
 const SECTION_FILE_RE = new RegExp(`^(${ANCHOR})\\.md$`);
 const SECTION_RE = new RegExp(`^§(${ANCHOR})(?:[ \\t]+(.*))?$`);
+// A pointer's heading text: one link, labelled with the anchor, to the file named for it. A link
+// elsewhere is an ordinary heading, so a pointer fix removes is never anything but a pointer.
+const POINTER_RE = new RegExp(`^\\[§(${ANCHOR})(?:[ \\t](?:\\\\.|[^\\]\\\\])*)?\\]\\((${ANCHOR})\\.md\\)$`);
 const TITLE_RE = new RegExp(`^((?:${PREFIXES})\\d{3,})[ \\t]+[—–-][ \\t]+(.+)$`);
 const FENCE_RE = /^ {0,3}(`{3,}|~{3,})/;
 const HEADING_RE = /^ {0,3}(#{1,6})(?:[ \t]+(.*?))?(?:[ \t]+#+)?[ \t]*$/;
@@ -241,6 +247,9 @@ function scanFile(name, lines) {
       const s = SECTION_RE.exec(text);
       if (s) heading.section = { anchor: s[1], title: (s[2] || '').trim() };
       else heading.malformed = true;
+    } else if (text.startsWith('[§')) {
+      const p = POINTER_RE.exec(text);
+      if (p && p[1] === p[2]) heading.pointer = { anchor: p[1] };
     } else if (/^index$/i.test(text)) {
       heading.isIndex = true;
     }
@@ -253,11 +262,12 @@ function scanFile(name, lines) {
 }
 
 // The lines of a file that hold its own text: not fenced code, and not what fix generates — the
-// index and the breadcrumb.
+// index, the breadcrumb and the pointers.
 function textLines(f) {
+  const pointers = new Set(f.headings.filter((h) => h.pointer).map((h) => h.i));
   const out = [];
   f.lines.forEach((line, i) => {
-    if (f.fenced[i] || (i === 0 && f.anchor && BREADCRUMB_RE.test(line))) return;
+    if (f.fenced[i] || pointers.has(i) || (i === 0 && f.anchor && BREADCRUMB_RE.test(line))) return;
     if (f.indexOpen >= 0 && i >= f.indexOpen && i <= Math.max(f.indexClose, f.indexOpen)) return;
     out.push({ i, line });
   });
@@ -317,31 +327,130 @@ function abstractOf(readme) {
   return { i: start, text: body.join(' ') };
 }
 
-// Where a section's text ends in its file: at the next heading outside it, or at the index.
+// The anchor a heading stands for: a section's own, or the one a pointer links.
+const anchorOf = (h) => (h.section ? h.section.anchor : h.pointer ? h.pointer.anchor : null);
+
+// Where a section's text ends in its file: at the next heading outside it, a section's or a
+// pointer, or at the index.
 function rangeEnd(f, s) {
   let end = f.lines.length;
   if (f.indexOpen > s.i) end = f.indexOpen;
   for (const h of f.headings) {
     if (h.i <= s.i || h.i >= end) continue;
-    if ((h.isIndex && f.name === README) || h.malformed || (h.section && !isWithin(h.section.anchor, s.anchor))) {
-      return h.i;
-    }
+    const a = anchorOf(h);
+    if ((h.isIndex && f.name === README) || h.malformed || (a && !isWithin(a, s.anchor))) return h.i;
   }
   return end;
+}
+
+// Where a pointer's lines end: at the next heading of a section, a pointer or the index, or at the
+// index block. Anything before that is under the pointer.
+function pointerEnd(f, p) {
+  const end = f.indexOpen > p.i ? f.indexOpen : f.lines.length;
+  const next = f.headings.find((h) => h.i > p.i && (anchorOf(h) || h.malformed || (h.isIndex && f.name === README)));
+  return next && next.i < end ? next.i : end;
 }
 
 // ---------------------------------------------------------------- generated lines
 
 const escapeLabel = (s) => s.replace(/[[\]]/g, '\\$&');
 
-// Every section, nested by depth. An entry links the file that holds the section; one with no
-// link is in README.md itself.
+// A heading's id, the one GitHub gives it and VS Code's preview gives it too (github-slugger): its
+// rendered text, lowercased, with nothing left but letters, marks, digits, connector punctuation,
+// spaces and hyphens, and each space made a hyphen. So `§3.2 Retries & backoff` is
+// 32-retries--backoff. Characters newer than github-slugger's Unicode data are kept here where it
+// drops them; no script these docs are written in has any.
+const SLUG_DROP_RE = /[^\p{Alphabetic}\p{M}\p{Nd}\p{Pc} -]/gu;
+const isWordChar = (c) => c !== undefined && /[\p{L}\p{N}]/u.test(c);
+
+// Text outside code spans as it renders: no HTML tag, no backslash before an escaped character,
+// and no emphasis underscores — a run of them with a word on one side only. Inside a word, or
+// between spaces, an underscore is text.
+function inlineText(s) {
+  const t = s.replace(/<\/?[A-Za-z][^<>\n]*>/g, '');
+  let out = '';
+  for (let i = 0; i < t.length; i++) {
+    if (t[i] === '\\' && /[!-/:-@[-`{-~]/.test(t[i + 1] || '')) {
+      out += t[++i];
+      continue;
+    }
+    if (t[i] !== '_') {
+      out += t[i];
+      continue;
+    }
+    let j = i;
+    while (t[j] === '_') j++;
+    if (isWordChar(t[i - 1]) === isWordChar(t[j])) out += t.slice(i, j);
+    i = j - 1;
+  }
+  return out;
+}
+
+// The text a heading's markdown renders to: a link or an image by its label, a code span's content
+// as written, the rest through inlineText. A run of backticks that nothing closes is text.
+function headingText(md) {
+  let rest = md.replace(/!?\[((?:\\.|[^\]\\])*)\]\([^)]*\)/g, '$1');
+  let out = '';
+  for (;;) {
+    const open = /`+/.exec(rest);
+    if (!open) return out + inlineText(rest);
+    const after = rest.slice(open.index + open[0].length);
+    const close = new RegExp(`(?<!\`)${open[0]}(?!\`)`).exec(after);
+    out += inlineText(rest.slice(0, open.index));
+    if (!close) {
+      out += open[0];
+      rest = after;
+      continue;
+    }
+    const code = after.slice(0, close.index);
+    // A space on each side of a code span's content is padding, not content.
+    out += code.startsWith(' ') && code.endsWith(' ') && code.trim() ? code.slice(1, -1) : code;
+    rest = after.slice(close.index + close[0].length);
+  }
+}
+
+const slugOf = (md) => headingText(md).trim().toLowerCase().replace(SLUG_DROP_RE, '').replace(/ /g, '-');
+
+// Every heading's id in one file, by its line: in order, an id already taken getting the next free
+// -1, -2, as github-slugger counts them.
+function slugsOf(f) {
+  const taken = new Map();
+  const out = new Map();
+  for (const h of f.headings) {
+    const base = slugOf(h.text);
+    let id = base;
+    while (taken.has(id)) {
+      taken.set(base, taken.get(base) + 1);
+      id = `${base}-${taken.get(base)}`;
+    }
+    taken.set(id, 0);
+    out.set(h.i, id);
+  }
+  return out;
+}
+
+// Every section, nested by depth, each linking its heading: `#<id>` when it is in README.md itself,
+// `<file>#<id>` when it is in a section file.
 function renderIndex(m) {
+  const ids = new Map();
+  const idOf = (s) => {
+    if (!ids.has(s.file)) ids.set(s.file, slugsOf(m.files.get(s.file)));
+    return ids.get(s.file).get(s.i);
+  };
   return sortedSections(m).map((s) => {
-    const label = `§${s.anchor} ${s.title}`.trim();
-    const entry = s.file === README ? label : `[${escapeLabel(label)}](${s.file})`;
-    return `${'  '.repeat(depthOf(s.anchor) - 1)}- ${entry}`;
+    const label = escapeLabel(`§${s.anchor} ${s.title}`.trim());
+    const file = s.file === README ? '' : s.file;
+    return `${'  '.repeat(depthOf(s.anchor) - 1)}- [${label}](${file}#${idOf(s)})`;
   });
+}
+
+// What check says of an index that differs from the one fix writes: which entries link nothing,
+// when some do.
+function staleIndex(cur) {
+  const bare = cur.map((line) => new RegExp(`^\\s*- §(${ANCHOR})(?![\\d.])`).exec(line)).filter(Boolean).map((x) => `§${x[1]}`);
+  if (!bare.length) return 'the index is out of date';
+  const named = bare.length > 3 ? `${bare.slice(0, 3).join(', ')} and ${bare.length - 3} more` : bare.join(', ').replace(/, ([^,]*)$/, ' and $1');
+  return `the index is out of date: ${named} ${bare.length === 1 ? 'has' : 'have'} no link`;
 }
 
 // The first line of a section file: the doc, then each ancestor section, each linking its file.
@@ -357,6 +466,13 @@ function renderBreadcrumb(m, anchor, id) {
     chain.push(`[${escapeLabel(`§${a} ${s ? s.title : ''}`.trim())}](${ownFile(a)})`);
   }
   return `> ${chain.join(' › ')}`;
+}
+
+// The heading a section moved out leaves in its place: its own, as a link to its file.
+function renderPointer(m, anchor) {
+  const s = m.sections.get(anchor);
+  const label = `§${anchor} ${s ? s.title : ''}`.trim();
+  return `${'#'.repeat(levelFor(anchor))} [${escapeLabel(label)}](${ownFile(anchor)})`;
 }
 
 function currentIndex(readme) {
@@ -402,7 +518,7 @@ function checkDoc(m, { id, maxLines, noun = 'SDD', lineCites = true }) {
     } else {
       const cur = currentIndex(readme);
       if (!cur) add(README, undefined, 'no generated index', { fixable: true });
-      else if (!sameLines(cur, renderIndex(m))) add(README, readme.indexOpen, 'the index is out of date', { fixable: true });
+      else if (!sameLines(cur, renderIndex(m))) add(README, readme.indexOpen, staleIndex(cur), { fixable: true });
     }
   }
 
@@ -422,7 +538,8 @@ function checkDoc(m, { id, maxLines, noun = 'SDD', lineCites = true }) {
         if (h.level !== want) {
           add(f.name, h.i, `§${anchor} is a level-${h.level} heading; its depth takes ${'#'.repeat(want)}`, { fixable: true });
         }
-      } else if (h.isIndex && f.name === README) {
+      } else if (h.pointer || (h.isIndex && f.name === README)) {
+        // A heading after a pointer is under the pointer, which is reported below.
         enclosing = null;
       } else if (enclosing && h.level > 1 && h.level <= levelFor(enclosing)) {
         add(
@@ -475,9 +592,46 @@ function checkDoc(m, { id, maxLines, noun = 'SDD', lineCites = true }) {
     }
   }
 
+  // Every section in a file of its own has a pointer in the file that holds its parent, and a
+  // pointer stands alone: the text it stands for is in the file it links.
+  const { want, held } = pointerHomes(m);
+  const pointed = new Set();
+  let pointers = 0;
+  for (const f of orderFiles(m.files)) {
+    for (const h of f.headings) {
+      if (!h.pointer) continue;
+      const a = h.pointer.anchor;
+      const home = want.get(a) || held.get(a);
+      let why = null;
+      if (!m.sections.has(a)) why = `a pointer to §${a}, which does not exist; fix removes it`;
+      else if (!home) why = `a pointer to §${a}, which has no file of its own; fix removes it`;
+      else if (home !== f.name) why = `a pointer to §${a} belongs in ${home}, not here; fix removes it`;
+      else if (pointed.has(a)) why = `a second pointer to §${a}; fix removes it`;
+      else if (f.lines[h.i] !== renderPointer(m, a)) why = `the pointer to §${a} is out of date`;
+      if (home === f.name) pointed.add(a);
+      if (why) {
+        add(f.name, h.i, why, { fixable: true });
+        pointers++;
+      }
+      const end = pointerEnd(f, h);
+      for (let i = h.i + 1; i < end; i++) {
+        if (isBlank(f.lines[i]) || RULE_RE.test(f.lines[i])) continue;
+        add(f.name, i, `text under the pointer to §${a}; a pointer stands alone: move the text into the section's own file, or under a heading of its own`, {
+          structural: true,
+        });
+        break;
+      }
+    }
+  }
+  for (const [a, home] of want) {
+    if (pointed.has(a)) continue;
+    add(home, undefined, `no pointer to §${a}, which is in ${ownFile(a)}; fix adds it`, { fixable: true });
+    pointers++;
+  }
+
   // A section file small enough to go back where its parent is. Only on a sound doc: the merge
-  // is worked out by building it, which needs every section where it belongs.
-  if (!astray.length && !issues.some((x) => x.structural)) {
+  // is worked out by building it, which needs every section and every pointer where it belongs.
+  if (!astray.length && !pointers && !issues.some((x) => x.structural)) {
     for (const c of mergeCandidates(m, maxLines)) {
       add(c.file, undefined, `§${c.anchor} fits back into ${c.home}, ${c.lines} lines together, within ${packTarget(maxLines)}; fix merges it`, {
         fixable: true,
@@ -530,6 +684,51 @@ function homeOf(m, anchor) {
   return parent ? parent.file : README;
 }
 
+// Where each pointer goes: a section in a file of its own has one in the file that holds its
+// parent, README.md for a top-level section. `want` maps each such section to that file. `held`
+// does the same for a section whose parent has no file of its own, which misplaced() moves into
+// the parent's file: its pointer may stay until then, since the move puts the text in its place,
+// but none is needed.
+function pointerHomes(m) {
+  const want = new Map();
+  const held = new Map();
+  for (const s of sortedSections(m)) {
+    if (!hasOwnFile(s)) continue;
+    const p = parentOf(s.anchor);
+    const parent = p && m.sections.get(p);
+    const home = homeOf(m, s.anchor);
+    if ((p && !parent) || !m.files.has(home)) continue;
+    (parent && !hasOwnFile(parent) ? held : want).set(s.anchor, home);
+  }
+  return { want, held };
+}
+
+// lines with lines[from, to) replaced by `insert`, set off by one blank line from the text on
+// either side, and with no blank line left at either end.
+function spliced(lines, from, to, insert) {
+  const before = lines.slice(0, from);
+  const after = lines.slice(to);
+  while (before.length && isBlank(before[before.length - 1])) before.pop();
+  while (after.length && isBlank(after[0])) after.shift();
+  const out = before;
+  for (const part of [insert, after]) {
+    if (!part.length) continue;
+    if (out.length) out.push('');
+    out.push(...part);
+  }
+  return out;
+}
+
+// Where a section, or a pointer to it, goes in a file, in anchor order: before the first section
+// or pointer there that comes after it, else after the last one that comes before it.
+function placeFor(f, anchor) {
+  const marks = f.headings.filter(anchorOf);
+  const later = marks.find((h) => compareAnchors(anchorOf(h), anchor) > 0);
+  if (later) return later.i;
+  const earlier = marks.filter((h) => compareAnchors(anchorOf(h), anchor) < 0).pop();
+  return earlier ? rangeEnd(f, { i: earlier.i, anchor: anchorOf(earlier) }) : f.lines.length;
+}
+
 // Sections out of place: one written into a file other than its parent's, and one with a file of
 // its own while its parent has none. The first kind comes first, so that a section file holds
 // nothing but its own section by the time it is merged away.
@@ -550,10 +749,10 @@ function misplaced(m) {
   return [...inline, ...own];
 }
 
-// A section — with whatever subsections sit inside it — cut from its file and put into `to`, in
-// anchor order: before the first section there that comes after it, else after the last one that
-// comes before it. Returns the new lines of both files, without changing either. `from` is null
-// when nothing but a breadcrumb would be left: the section had the file to itself.
+// A section — with whatever subsections sit inside it — cut from its file and put into `to`: in
+// place of its pointer there, or else in anchor order (placeFor). Returns the new lines of both
+// files, without changing either. `from` is null when nothing but a breadcrumb would be left: the
+// section had the file to itself.
 function relocated(m, anchor, to) {
   const s = m.sections.get(anchor);
   const src = m.files.get(s.file);
@@ -563,18 +762,9 @@ function relocated(m, anchor, to) {
   const from = left.every((line, i) => isBlank(line) || (i === 0 && BREADCRUMB_RE.test(line))) ? null : left;
 
   const dest = m.files.get(to);
-  const sections = dest.headings.filter((h) => h.section);
-  const later = sections.find((h) => compareAnchors(h.section.anchor, anchor) > 0);
-  const earlier = sections.filter((h) => compareAnchors(h.section.anchor, anchor) < 0).pop();
-  let at = dest.lines.length;
-  if (later) at = later.i;
-  else if (earlier) at = rangeEnd(dest, { i: earlier.i, anchor: earlier.section.anchor });
-  const before = dest.lines.slice(0, at);
-  const after = dest.lines.slice(at);
-  while (before.length && isBlank(before[before.length - 1])) before.pop();
-  while (after.length && isBlank(after[0])) after.shift();
-  const into = [...before, ...(before.length ? [''] : []), ...text, ...(after.length ? ['', ...after] : [])];
-  return { from, into };
+  const pointer = dest.headings.find((h) => h.pointer && h.pointer.anchor === anchor);
+  const at = pointer ? pointer.i : placeFor(dest, anchor);
+  return { from, into: spliced(dest.lines, at, pointer ? at + 1 : at, text) };
 }
 
 function moveInto(files, m, anchor, to) {
@@ -626,16 +816,52 @@ function nextMove(m, maxLines, splitting) {
   return null;
 }
 
-// Cuts one section, with its subsections, out of its file into <anchor>.md.
+// Cuts one section, with its subsections, out of its file into <anchor>.md, and leaves its pointer
+// in its place. The blank lines and thematic break that closed it stay behind, after the pointer.
 function moveOut(files, m, anchor, id) {
   const s = m.sections.get(anchor);
   const f = m.files.get(s.file);
   const name = ownFile(anchor);
   if (files.has(name)) throw new Error(`${name} already exists`);
-  const end = rangeEnd(f, s);
   const lines = files.get(s.file);
-  files.set(s.file, trimEnd([...lines.slice(0, s.i), ...lines.slice(end)]));
-  files.set(name, [renderBreadcrumb(m, anchor, id), '', ...trimEnd(lines.slice(s.i, end))]);
+  const text = trimEnd(lines.slice(s.i, rangeEnd(f, s)));
+  files.set(s.file, trimEnd(spliced(lines, s.i, s.i + text.length, [renderPointer(m, anchor)])));
+  files.set(name, [renderBreadcrumb(m, anchor, id), '', ...text]);
+}
+
+// Pointers where pointerHomes puts them: each one rewritten as rendered, removed where it does not
+// belong, and added where it is missing, in anchor order (placeFor). `log` collects what changed:
+// the pointers added and updated, as `<file> <anchor>`, and how many were removed.
+function applyPointers(files, m, log) {
+  const { want, held } = pointerHomes(m);
+  const pointed = new Set();
+  for (const f of m.files.values()) {
+    let lines = files.get(f.name);
+    const drop = [];
+    for (const h of f.headings) {
+      if (!h.pointer) continue;
+      const a = h.pointer.anchor;
+      if ((want.get(a) || held.get(a)) !== f.name || pointed.has(a)) {
+        drop.push(h.i);
+        continue;
+      }
+      pointed.add(a);
+      const line = renderPointer(m, a);
+      if (lines[h.i] === line) continue;
+      lines[h.i] = line;
+      log.updated.add(`${f.name} ${a}`);
+    }
+    for (const i of drop.reverse()) lines = spliced(lines, i, i + 1, []);
+    files.set(f.name, lines);
+    log.removed += drop.length;
+  }
+  for (const [a, home] of want) {
+    if (pointed.has(a)) continue;
+    const lines = files.get(home);
+    const at = placeFor(scanFile(home, lines), a);
+    files.set(home, spliced(lines, at, at, [renderPointer(m, a)]));
+    log.added.add(`${home} ${a}`);
+  }
 }
 
 // ---------------------------------------------------------------- fix
@@ -688,8 +914,9 @@ function applyIndex(files, m) {
 
 // Everything fix repairs, in one pass: heading levels; then, one at a time, sections out of place,
 // section files that fit back, and sections out of files that are too long, in that order, with
-// the breadcrumbs and the index regenerated before every step, since both count towards a file's
-// lines. Returns the new files and what changed, or the structural issues that stopped it.
+// the breadcrumbs, the pointers and the index regenerated before every step, since all three count
+// towards a file's lines. Returns the new files and what changed, or the structural issues that
+// stopped it.
 function fixDoc(input, ctx) {
   const files = new Map([...input].map(([name, lines]) => [name, [...lines]]));
   let m = buildModel(files);
@@ -712,21 +939,29 @@ function fixDoc(input, ctx) {
   const moved = new Map();
   const note = (map, key, anchor) => map.set(key, [...(map.get(key) || []), anchor]);
   const splitting = new Set();
+  // A pointer added or updated, then replaced by its section's text in the same run, is not news.
+  const pointers = { added: new Set(), updated: new Set(), removed: 0 };
+  const replace = (anchor, to) => {
+    moveInto(files, m, anchor, to);
+    pointers.added.delete(`${to} ${anchor}`);
+    pointers.updated.delete(`${to} ${anchor}`);
+  };
   for (;;) {
     m = buildModel(files);
     applyBreadcrumbs(files, m, ctx.id);
+    applyPointers(files, buildModel(files), pointers);
     applyIndex(files, buildModel(files));
     m = buildModel(files);
     const [astray] = misplaced(m);
     if (astray) {
       note(placed, astray.to, astray.anchor);
-      moveInto(files, m, astray.anchor, astray.to);
+      replace(astray.anchor, astray.to);
       continue;
     }
     const [back] = mergeCandidates(m, ctx.maxLines);
     if (back) {
       note(merged, back.home, back.anchor);
-      moveInto(files, m, back.anchor, back.home);
+      replace(back.anchor, back.home);
       continue;
     }
     const next = nextMove(m, ctx.maxLines, splitting);
@@ -739,6 +974,8 @@ function fixDoc(input, ctx) {
   for (const [to, anchors] of placed) actions.push(`moved ${list(anchors)} into ${to}, where ${one(anchors, 'its parent is', 'their parents are')}`);
   for (const [to, anchors] of merged) actions.push(`merged ${list(anchors)} back into ${to}`);
   for (const [from, anchors] of moved) actions.push(`moved ${list(anchors)} out of ${from} into ${one(anchors, 'its own file', 'their own files')}`);
+  const tally = [['added', pointers.added.size], ['updated', pointers.updated.size], ['removed', pointers.removed]];
+  for (const [verb, n] of tally) if (n) actions.push(`${verb} ${n} pointer${n === 1 ? '' : 's'}`);
 
   const crumbs = [...input.keys()].filter(
     (name) => SECTION_FILE_RE.test(name) && files.has(name) && files.get(name)[0] !== input.get(name)[0],
@@ -1024,9 +1261,9 @@ function findRefs(line, { bare = false, markdown = false } = {}) {
 
 // Every reference in a file, with its line index. In markdown, fenced code is skipped; in a doc's
 // own files, so are the lines that define anchors rather than cite them — the index, the
-// breadcrumb, a section heading's anchor — and a bare §3.2 counts as a reference to that doc. A
-// section's title is read for what it cites, (removed; see §3.6) or (SDD013§P6), but a bare label
-// in it is where that label is defined, not a citation: lint reports those.
+// breadcrumb, a pointer, a section heading's anchor — and a bare §3.2 counts as a reference to
+// that doc. A section's title is read for what it cites, (removed; see §3.6) or (SDD013§P6), but a
+// bare label in it is where that label is defined, not a citation: lint reports those.
 function refsInFile(name, lines, { markdown, inDoc }) {
   const scan = markdown ? scanFile(name, lines) : null;
   const skip = new Set();
@@ -1035,7 +1272,7 @@ function refsInFile(name, lines, { markdown, inDoc }) {
     scan.fenced.forEach((f, i) => f && skip.add(i));
     if (inDoc) {
       for (const h of scan.headings) {
-        if (h.malformed) skip.add(h.i);
+        if (h.malformed || h.pointer) skip.add(h.i);
         else if (h.section) titles.set(h.i, titleStart(lines[h.i], h.section.anchor));
       }
       if (scan.indexOpen >= 0) for (let i = scan.indexOpen; i <= Math.max(scan.indexClose, scan.indexOpen); i++) skip.add(i);
@@ -1172,8 +1409,10 @@ module.exports = {
   scanFile,
   buildModel,
   abstractOf,
+  slugOf,
   renderIndex,
   renderBreadcrumb,
+  renderPointer,
   checkDoc,
   fixDoc,
   lintDoc,
