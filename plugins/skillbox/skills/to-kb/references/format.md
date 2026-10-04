@@ -37,7 +37,7 @@ After the abstract, the README may hold a few short lines. Then come the section
 - **Never renumber a section and never reuse a number.** Code and other docs cite the numbers.
 - **Rewrite a section's text in place** whenever it has stopped being true. Never append "Update: now it does X" under text that says otherwise.
 - **A new section takes the next free number among its siblings.** Nest it under a section only when it really belongs inside that section. §3.5.1 means "part of §3.5", never "between §3.5 and §3.6".
-- **Removing a section:** keep its heading and delete its text. Its title becomes `(removed)` or `(removed; see §3.6)`. Do the same for each of its subsections. `check` then warns about anything that still cites it.
+- **Removing a section:** keep its heading and delete its text. Its title becomes `(removed)`, `(removed; see §3.6)`, or `(removed; see SDD012§2)` when its text moved to another doc. Do the same for each of its subsections. `check` then warns about anything that still cites it.
 
 ### Files
 
@@ -57,4 +57,4 @@ Where a section moved out, the file it left keeps a **pointer** in its place: th
 - **Inside a doc's own files,** a bare `§3.2` means a section of that doc. Another doc takes its id every time, `SDD004§1.3` or `KBDOC002§4`: a bare § right after another doc's reference, in the same list, is read as that doc's section. A document outside the repository keeps its own name, `RFC 9110 §15`, and is not checked.
 - **A § is followed by a section number.** A label in its place, such as `SDD013§P6` for a project phase, finds no heading.
 - **Never cite a doc by a file path or a markdown link.** The id never moves; a path moves when files split or merge.
-- **SDDs and knowledge-base pages cite each other freely.** An SDD rule that exists because of an outside constraint cites the knowledge-base section that holds the constraint, `KBDOC003§2.1`, rather than restating it.
+- **Docs cite each other freely, and never restate each other.** A fact lives in one section, and a doc that relies on it cites that section: an SDD rule that exists because of an outside constraint cites `KBDOC003§2.1`, and an SDD whose area follows a rule another SDD holds cites `SDD012§2`. A copy goes stale unseen: `refs --to` finds what cites a section when it is corrected, never what repeats it.

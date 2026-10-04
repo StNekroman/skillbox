@@ -109,8 +109,9 @@ invents.
 
 ## to-sdd
 
-An SDD is agent-written memory of one feature area, committed to the repository: what the area
-does, how its parts fit, the rules other code follows. The next agent reads it before changing that
+An SDD is agent-written memory of one feature area or shared mechanism, committed to the
+repository: what the area does, how its parts fit, the rules other code follows. A rule several
+areas follow is stated once, in the SDD of the mechanism that enforces it, and cited elsewhere. The next agent reads it before changing that
 area. At the end of a task that changed code, the skill corrects what the change made wrong and
 records the architecture it added — and writes nothing for a bug fix, a refactor or a field.
 

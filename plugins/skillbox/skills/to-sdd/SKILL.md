@@ -1,13 +1,13 @@
 ---
 name: to-sdd
-description: Keep the repository’s SDDs — the agent-written memory of how each feature area works — true after a code change. Corrects the sections a change made wrong, adds sections for new architecture, creates an SDD for an area none covers, and keeps each file under the size limit. Writes nothing when the change is below the bar. Use at the end of a task that changed code, or when asked to create, update or migrate SDDs; do not use for knowledge-base pages, ADRs, tickets or code comments.
+description: Keep the repository’s SDDs — the agent-written memory of how each feature area and each shared mechanism works — true after a code change. Corrects the sections a change made wrong, adds sections for new architecture, creates an SDD for an area none covers, and keeps each file under the size limit. Writes nothing when the change is below the bar. Use at the end of a task that changed code, or when asked to create, update or migrate SDDs; do not use for knowledge-base pages, ADRs, tickets or code comments.
 metadata:
-  prompt-version: "2026-10-04.1"
+  prompt-version: "2026-10-04.2"
 ---
 
 # Keep the SDDs true
 
-An SDD is the repository's memory of one feature area: what the area does, how its parts fit, where its state lives, and the rules other code has to follow. Agents write SDDs for agents. The next agent to change that area reads its SDD before touching code, and trusts what it reads.
+An SDD is the repository's memory of one area: a feature, or a mechanism several features rely on, such as tenant isolation, authorization or the event bus. It holds what the area does, how its parts fit, where its state lives, and the rules other code has to follow. Agents write SDDs for agents. The next agent to change that area reads its SDD before touching code, and trusts what it reads.
 
 So a wrong SDD is worse than a missing one. This skill runs at the end of a task that changed code. It makes every statement that the change touched true again, and it records architecture the change added. Most small changes need nothing, and then the skill writes nothing.
 
@@ -21,7 +21,8 @@ SDDs sit beside the repository's knowledge base: pages about the world outside t
 4. **Find the SDDs the change touches.**
    - Run `refs --changed`. It lists every section the changed code cites, where each section lives, and which lines cite it. It also lists the knowledge-base sections that link a changed file: keep those for the report, and leave the pages alone.
    - For an area the change entered without citing it, list the folders in `paths.sddRoot`. When a folder name is not enough, read the first paragraph of its `README.md`.
-5. **Read each affected SDD.** Start with its `README.md`: the abstract, then the index. Every index entry links its section's heading, in the file that holds it: `#<id>` in `README.md` itself, `<file>#<id>` elsewhere. Then read the sections the change touches, and their parents.
+   - For a rule the change makes code follow, grep `paths.sddRoot` for the names of the mechanism behind it. Another SDD may already hold the rule. See `A rule several areas follow`.
+5. **Read each affected SDD.** Start with its `README.md`: the abstract, then the index. Every index entry links its section's heading, in the file that holds it: `#<id>` in `README.md` itself, `<file>#<id>` elsewhere. Then read the sections the change touches, and their parents. For each section you will correct or remove, run `refs --to` on it: a section of another SDD that cites it may need the same correction.
 6. **Decide what each SDD needs:** corrected statements, new sections, a new SDD, or nothing.
 7. **Write it**, following [the format](references/format.md) and `Content`. Read the format before you write.
 8. **Run `fix`, then `check`, then `lint`**, all scoped to the SDDs you wrote. Repair what `check` still reports. Each `lint` warning is a lead: confirm it against the code, and correct the text where it is wrong.
@@ -46,9 +47,21 @@ Do not add detail below an SDD's level just because the change touched it. An SD
 
 ### A new SDD, or a section in an existing one
 
-Keep one SDD per feature area. Create a new SDD only when the change built an area no existing SDD covers. Anything else becomes a section in the SDD that covers the area.
+Keep one SDD per area. Create a new SDD when the change built an area no existing SDD covers, or when it made a second area rely on a mechanism that so far lives in another area's SDD: see `A rule several areas follow`. Anything else becomes a section in the SDD that covers the area.
 
-When two SDDs could hold it, choose the one whose abstract names the area, and name the other in the report.
+When two SDDs could hold it, choose the one whose abstract names the area, and name the other in the report. A rule several areas follow goes in the SDD of the mechanism that enforces it.
+
+### A rule several areas follow
+
+Some rules hold in many areas: every query is scoped by tenant, every handler sits behind the auth guard. State such a rule once, in the SDD of the mechanism that enforces it. Every other SDD says how its own area applies the rule, and cites that section, `SDDnnn§x.y`. Never restate it: when the rule changes, `refs --changed` finds the section that the mechanism's code cites, and a copy in another SDD stays wrong.
+
+- **A rule starts where it was built.** While only one area follows it, it stays a section of that area's SDD.
+- **When a second area comes to rely on it, move it into an SDD of its own**, named for the mechanism, so that the folder listing leads the next agent to it.
+  1. Take the id from `next SDD`, and write the section and its subsections in the new SDD.
+  2. Remove the old section as [the format](references/format.md) says, titled `(removed; see SDDnnn§x.y)` with its new id, and each of its subsections the same way.
+  3. Run `refs --to` on the old section, and repoint every citation it lists, in code and in other SDDs. `check` warns until none is left.
+  4. If the mechanism's entry point in the code cited nothing, add the citation. Without it, `refs --changed` never reaches the new SDD.
+- **Only a mechanism gets an SDD of its own:** code that enforces the rule, such as a guard, a base class, a middleware or a shared module. A convention no code enforces, such as a naming or style rule, belongs in the repository's agent instructions or a lint rule, not in an SDD.
 
 ## Configuration
 
@@ -90,6 +103,7 @@ Design docs named another way, such as `SDD-001-mail.md` or a `design/` folder, 
   - the gotchas a newcomer would hit;
   - the reason behind a choice, or a link to the ADR that holds it.
 - **What it does not hold:** what the code already says plainly. That means field lists, signatures, copied code and step-by-step walkthroughs of one function.
+- **A rule another SDD holds is cited, not restated.** Say how this area applies it, and cite the section that holds it. See `A rule several areas follow`.
 - **An outside constraint lives in the knowledge base.** When code is built around a rule from outside — a provider's API, a marketplace policy, a law — state how the code applies it and cite the knowledge-base section that holds the rule, `KBDOCnnn§x.y`. Do not restate the rule.
 - **Link the ADR behind a design choice** when the repository has one. Put a relative path in the section that describes the choice. Leave the reasons to the ADR and do not restate them.
 - **Write for an agent about to change this code.** Use short, dense sentences. Every sentence should be a fact that agent can act on.
@@ -107,7 +121,7 @@ node "${CLAUDE_SKILL_DIR}/scripts/doc-check.js" <command>
 | Command | Use it |
 |---|---|
 | `refs --changed` | Step 4: the sections that changed code cites, and the knowledge-base sections that link changed files |
-| `refs --to SDDnnn§x.y` | Before removing or renumbering a section: everything that cites it |
+| `refs --to SDDnnn§x.y` | Step 5, and before moving a section to another SDD: everything that cites it, other SDDs included |
 | `next SDD` | Before creating an SDD: the id it takes |
 | `fix SDDnnn …` | After writing. It regenerates the index, breadcrumbs and pointers, sets heading levels, puts sections where they belong, merges back section files that fit, and moves the largest sections out of files over the limit. It rewrites, creates and deletes files, so read a file again before editing it further |
 | `check SDDnnn …` | After `fix`. It runs every rule, including references to those SDDs from anywhere in the repository |
@@ -138,7 +152,7 @@ Without the hook, nothing checks the SDDs after you. Step 8 is then the only che
 
 Report to the user:
 
-- **each SDD touched**, as a clickable link to its `README.md`, with what changed: the sections added, corrected or removed. Put a new SDD first, and mark it as new;
+- **each SDD touched**, as a clickable link to its `README.md`, with what changed: the sections added, corrected or removed. Put a new SDD first, and mark it as new. Name a section moved to another SDD by both ids;
 - **what `fix` did**, if it moved sections between files;
 - **anything `check` still reports**;
 - **the knowledge-base sections that link changed code**, one line each, with a suggestion to run `to-kb` for any the change may have made wrong;

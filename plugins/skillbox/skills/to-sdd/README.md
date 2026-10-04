@@ -1,8 +1,8 @@
 # to-sdd
 
-Keeps a repository's SDDs true. An SDD is agent-written memory of one feature area — what it does,
-how its parts fit, the rules other code follows — committed to the repository and read by the next
-agent before it changes that area. The skill runs at the end of a task that changed code and
+Keeps a repository's SDDs true. An SDD is agent-written memory of one feature area or shared
+mechanism — what it does, how its parts fit, the rules other code follows — committed to the
+repository and read by the next agent before it changes that area. The skill runs at the end of a task that changed code and
 corrects, extends or creates the SDDs the change touched. Beside the SDDs sits the repository's
 knowledge base — pages about the world outside the code — which [to-kb](../to-kb/README.md) keeps;
 this skill never edits those pages.
@@ -17,7 +17,12 @@ alters how a feature area is built, or that makes something an SDD states wrong.
 refactors, renames, tests, config values and field-level detail stay out — unless an SDD already
 states that detail, in which case it is corrected rather than left wrong.
 
-One SDD per feature area. A new one is created only for an area no SDD covers.
+One SDD per area: a feature, or a mechanism several features rely on, such as tenant isolation or
+authorization. A new one is created for an area no SDD covers, or for a mechanism once a second
+area relies on it: its section moves out of the first area's SDD, leaving its heading titled
+`(removed; see SDD012§2)`, and every citation is repointed. A rule several areas follow is stated once, in the
+mechanism's SDD, and cited everywhere else. A copy would stay wrong when the rule changes, because
+only the section the mechanism's code cites is found.
 
 ## The format
 
