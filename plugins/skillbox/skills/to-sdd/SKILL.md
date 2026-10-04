@@ -2,7 +2,7 @@
 name: to-sdd
 description: Keep the repository’s SDDs — the agent-written memory of how each feature area and each shared mechanism works — true after a code change. Corrects the sections a change made wrong, adds sections for new architecture, creates an SDD for an area none covers, and keeps each file under the size limit. Writes nothing when the change is below the bar. Use at the end of a task that changed code, or when asked to create, update or migrate SDDs; do not use for knowledge-base pages, ADRs, tickets or code comments.
 metadata:
-  prompt-version: "2026-10-04.2"
+  prompt-version: "2026-10-04.3"
 ---
 
 # Keep the SDDs true
@@ -15,7 +15,7 @@ SDDs sit beside the repository's knowledge base: pages about the world outside t
 
 ## Order of work
 
-1. **See what changed.** Run `git status` and `git diff HEAD`, and take in what the conversation did.
+1. **See what changed.** Run `git status` and `git diff HEAD`, and take in what the conversation did. When asked to document an area instead, its code is the change: read it in place of the diff, and go on to step 3.
 2. **Hold it against `The bar`.** Stop there if nothing clears the bar and none of the changed files cites an SDD. Say so in one line. Do not read the config and do not ask anything.
 3. **Read the configuration**, running its init if needed. See `Configuration`.
 4. **Find the SDDs the change touches.**
@@ -47,7 +47,7 @@ Do not add detail below an SDD's level just because the change touched it. An SD
 
 ### A new SDD, or a section in an existing one
 
-Keep one SDD per area. Create a new SDD when the change built an area no existing SDD covers, or when it made a second area rely on a mechanism that so far lives in another area's SDD: see `A rule several areas follow`. Anything else becomes a section in the SDD that covers the area.
+Keep one SDD per area. Create a new SDD when the change built, or the request names, an area no existing SDD covers, or when it made a second area rely on a mechanism that so far lives in another area's SDD: see `A rule several areas follow`. Anything else becomes a section in the SDD that covers the area.
 
 When two SDDs could hold it, choose the one whose abstract names the area, and name the other in the report. A rule several areas follow goes in the SDD of the mechanism that enforces it.
 
