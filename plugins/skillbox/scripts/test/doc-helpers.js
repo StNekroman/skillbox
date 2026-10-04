@@ -11,9 +11,9 @@ function section(anchor, title, lines = body(`§${anchor}`)) {
   return [`${'#'.repeat(level)} §${anchor} ${title}`, '', ...lines, ''];
 }
 
-// The top of a README.md: title and abstract, then whatever follows.
-function readme(id, title, rest = [], abstract = `What ${id} covers, in one short paragraph.`) {
-  return [`# ${id} — ${title}`, '', abstract, '', ...rest];
+// The top of a README.md: title and summary, then whatever follows.
+function readme(id, title, rest = [], summary = `What ${id} covers, in one short paragraph.`) {
+  return [`# ${id} — ${title}`, '', summary, '', ...rest];
 }
 
 const text = (lines) => `${lines.join('\n')}\n`;

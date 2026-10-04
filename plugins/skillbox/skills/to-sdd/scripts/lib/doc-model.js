@@ -2,7 +2,7 @@
 // are written by `npm run sync`; edit the source, never a copy.
 //
 // The document model. A doc is a folder, <PREFIX>nnn-<slug>/, holding README.md — the title, the
-// abstract, the generated index, and every section not moved out yet — plus one file per
+// summary, the generated index, and every section not moved out yet — plus one file per
 // moved-out section, named for its anchor: 3.md, 3.2.md. A section is a heading that carries its
 // anchor, `### §3.2 Title`, so a reference like SDD011§3.2 finds its heading wherever it lives.
 // Where a section moved out, the file that holds its parent keeps a pointer in its place: the
@@ -15,7 +15,7 @@
 // work.
 
 const README = 'README.md';
-const ABSTRACT_MAX = 500;
+const SUMMARY_MAX = 500;
 
 // The doc types. A prefix is capitals only and starts no other, so no id can be read as another
 // type's. rootKey and section name the config keys, paths.<rootKey> and <section>.maxLines; skill
@@ -312,7 +312,7 @@ const hasOwnFile = (s) => s.file === ownFile(s.anchor);
 const sortedSections = (m) => [...m.sections.values()].sort(byAnchor);
 
 // The first paragraph under the title.
-function abstractOf(readme) {
+function summaryOf(readme) {
   const h1 = readme.headings[0];
   if (!h1 || h1.level !== 1) return null;
   const { lines } = readme;
@@ -506,11 +506,11 @@ function checkDoc(m, { id, maxLines, noun = 'SDD', lineCites = true }) {
     else if (!t) add(README, m.h1.i, `the title heading must read "# ${id} — <title>"`);
     else if (t[1] !== id) add(README, m.h1.i, `the title says ${t[1]}, but the folder is ${id}`);
 
-    const abs = abstractOf(readme);
-    if (!abs) {
-      add(README, m.h1 ? m.h1.i + 1 : 0, `no abstract: open with one paragraph, under the title, saying what this ${noun} covers`);
-    } else if (abs.text.length > ABSTRACT_MAX) {
-      add(README, abs.i, `the abstract is ${abs.text.length} characters; the limit is ${ABSTRACT_MAX}`);
+    const summary = summaryOf(readme);
+    if (!summary) {
+      add(README, m.h1 ? m.h1.i + 1 : 0, `no summary: open with one paragraph, under the title, saying what this ${noun} covers`);
+    } else if (summary.text.length > SUMMARY_MAX) {
+      add(README, summary.i, `the summary is ${summary.text.length} characters; the limit is ${SUMMARY_MAX}`);
     }
 
     if (readme.indexOpen >= 0 && readme.indexClose < 0) {
@@ -1390,7 +1390,7 @@ function rewriteDocLinks(line, idForFile) {
 
 module.exports = {
   README,
-  ABSTRACT_MAX,
+  SUMMARY_MAX,
   TYPES,
   typeOf,
   HINT_RE,
@@ -1408,7 +1408,7 @@ module.exports = {
   joinLines,
   scanFile,
   buildModel,
-  abstractOf,
+  summaryOf,
   slugOf,
   renderIndex,
   renderBreadcrumb,

@@ -29,7 +29,7 @@ knowledge-base section holding it, and a page may link the code it is about.
 ## The format
 
 The same as the SDDs', described in [to-sdd's README](../to-sdd/README.md#the-format): one folder
-per topic, a `README.md` with a title, an abstract of at most 500 characters and a generated index,
+per topic, a `README.md` with a title, a summary of at most 500 characters and a generated index,
 sections as headings that carry their anchor (`### §3.2 Title`), cited everywhere as
 `KBDOC003§3.2`, numbers frozen, files split and merged by size. Binaries go in
 `<kbRoot>/attachments/`.

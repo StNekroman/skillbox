@@ -70,23 +70,23 @@ describe('scanning', () => {
 });
 
 describe('README.md', () => {
-  const withAbstract = (abstract) => only(readme('SDD001', 'A', [], abstract));
-  const abstractIssues = (files) => issuesOf(files).filter((x) => /abstract/.test(x.message));
+  const withSummary = (summary) => only(readme('SDD001', 'A', [], summary));
+  const summaryIssues = (files) => issuesOf(files).filter((x) => /summary/.test(x.message));
 
-  test('an abstract of 500 characters passes; 501 does not', () => {
-    assert.deepEqual(abstractIssues(withAbstract('x'.repeat(500))), []);
-    assert.deepEqual(messages(abstractIssues(withAbstract('x'.repeat(501)))), [
-      'README.md:3: the abstract is 501 characters; the limit is 500',
+  test('a summary of 500 characters passes; 501 does not', () => {
+    assert.deepEqual(summaryIssues(withSummary('x'.repeat(500))), []);
+    assert.deepEqual(messages(summaryIssues(withSummary('x'.repeat(501)))), [
+      'README.md:3: the summary is 501 characters; the limit is 500',
     ]);
   });
 
-  test('a wrapped abstract is one paragraph, its line breaks counted as spaces', () => {
+  test('a wrapped summary is one paragraph, its line breaks counted as spaces', () => {
     const files = only(['# SDD001 — A', '', 'a'.repeat(250), 'b'.repeat(250), '', '> not part of it']);
-    assert.equal(D.abstractOf(D.buildModel(files).files.get(README)).text.length, 501);
+    assert.equal(D.summaryOf(D.buildModel(files).files.get(README)).text.length, 501);
   });
 
-  test('a README that opens with a quote has no abstract', () => {
-    assert.ok(messages(issuesOf(only(['# SDD001 — A', '', '> quoted']))).some((m) => /no abstract/.test(m)));
+  test('a README that opens with a quote has no summary', () => {
+    assert.ok(messages(issuesOf(only(['# SDD001 — A', '', '> quoted']))).some((m) => /no summary/.test(m)));
   });
 
   test("the title names the folder's SDD", () => {
@@ -968,7 +968,7 @@ describe('doc types', () => {
   test('a KB page has its title, breadcrumbs and messages under its own noun', () => {
     const m = D.buildModel(only(['# KBDOC001 — Merchant Center', '', ...section('1', 'Rules')]));
     const ctx = { id: 'KBDOC001', maxLines: 1000, noun: 'KB page', lineCites: false };
-    assert.deepEqual(messages(D.checkDoc(m, ctx)), ['README.md:2: no abstract: open with one paragraph, under the title, saying what this KB page covers', 'README.md: no generated index']);
+    assert.deepEqual(messages(D.checkDoc(m, ctx)), ['README.md:2: no summary: open with one paragraph, under the title, saying what this KB page covers', 'README.md: no generated index']);
     assert.equal(D.renderBreadcrumb(m, '1.2', 'KBDOC001'), '> [KBDOC001 — Merchant Center](README.md) › [§1 Rules](1.md)');
   });
 
@@ -1022,7 +1022,7 @@ describe('doc types', () => {
     const files = D.fixDoc(only(readme('SDD001', 'A', [...section('1', 'One'), ...section('2', 'Two', body('two', 12))])), ctx(16)).files;
     const m = D.buildModel(files);
     const lines = files.get(README);
-    assert.equal(D.sectionAt(m, README, 2), null, 'the abstract');
+    assert.equal(D.sectionAt(m, README, 2), null, 'the summary');
     assert.equal(D.sectionAt(m, README, lines.indexOf('§1 line 1.')), '1');
     assert.equal(D.sectionAt(m, '2.md', 0), '2', 'the breadcrumb of 2.md');
   });

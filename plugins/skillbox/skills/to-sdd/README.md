@@ -32,7 +32,7 @@ Each SDD is a folder under `paths.sddRoot`:
 ```
 docs/sdd/
   SDD001-email-notifications/
-    README.md     ← title, an abstract of at most 500 characters, the generated index,
+    README.md     ← title, a summary of at most 500 characters, the generated index,
                     and every section not moved out — §1, §2 and §4 here, with a
                     pointer to 3.md between §2 and §4
     3.md          ← §3, the largest, moved out when README.md passed the size limit,

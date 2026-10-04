@@ -141,7 +141,7 @@ describe('check', () => {
     const r = run(root, ['check', 'SDD002']);
     assert.equal(r.status, 1);
     assert.match(r.stdout, /src\/a\.ts:1: SDD002 has no §9/);
-    assert.doesNotMatch(r.stdout, /SDD001|abstract/);
+    assert.doesNotMatch(r.stdout, /SDD001|summary/);
   });
 
   test('a label cited where a number belongs fails, naming the headings that carry it', (t) => {

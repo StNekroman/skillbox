@@ -26,7 +26,7 @@ SDDs sit beside the repository's knowledge base: pages about the world outside t
    - Run `refs --changed`. It lists every section the changed code cites, where each section lives, and which lines cite it. It also lists the knowledge-base sections that link a changed file: keep those for the report, and leave the pages alone.
    - For an area the change entered without citing it, list the folders in `paths.sddRoot`. When a folder name is not enough, read the first paragraph of its `README.md`.
    - For a rule the change makes code follow, grep `paths.sddRoot` for the names of the mechanism behind it. Another SDD may already hold the rule. See `A rule several areas follow`.
-5. **Read each affected SDD.** Start with its `README.md`: the abstract, then the index. Every index entry links its section's heading, in the file that holds it: `#<id>` in `README.md` itself, `<file>#<id>` elsewhere. Then read the sections the change touches, and their parents. For each section you will correct or remove, run `refs --to` on it: a section of another SDD that cites it may need the same correction.
+5. **Read each affected SDD.** Start with its `README.md`: the summary, then the index. Every index entry links its section's heading, in the file that holds it: `#<id>` in `README.md` itself, `<file>#<id>` elsewhere. Then read the sections the change touches, and their parents. For each section you will correct or remove, run `refs --to` on it: a section of another SDD that cites it may need the same correction.
 6. **Decide what each SDD needs:** corrected statements, new sections, a new SDD, or nothing.
 7. **Write it**, following [the format](references/format.md) and `Content`. Read the format before you write.
 8. **Run `fix`, then `check`, then `lint`**, all scoped to the SDDs you wrote. Repair what `check` still reports. Each `lint` warning is a lead: confirm it against the code, and correct the text where it is wrong.
@@ -70,7 +70,7 @@ A task that had to work out how an area works has paid for knowledge no SDD hold
 
 Keep one SDD per area. Create a new SDD when the change built an area no existing SDD covers, when the user asked for or agreed to record such an area, or when the change made a second area rely on a mechanism that so far lives in another area's SDD: see `A rule several areas follow`. Anything else becomes a section in the SDD that covers the area.
 
-When two SDDs could hold it, choose the one whose abstract names the area, and name the other in the report. A rule several areas follow goes in the SDD of the mechanism that enforces it.
+When two SDDs could hold it, choose the one whose summary names the area, and name the other in the report. A rule several areas follow goes in the SDD of the mechanism that enforces it.
 
 ### A rule several areas follow
 
@@ -105,7 +105,7 @@ A single-file SDD, `SDDnnn-<slug>.md` directly in `paths.sddRoot`, is the old fo
    1. **References, across the repository**, before any SDD's text changes. Run `check` and repair each reference error. A label cited where a section number belongs, such as `SDD013§P6`, is reported with the headings that carry that label. Pick the section it means, or drop the reference when the sentence around it only tells history. Do this step first: the content step may take the labels out of the headings, and then nothing is left to resolve them by.
    2. **Structure.** A doc that `migrate` moved without splitting had a structural problem. Repair it, then run `fix` on it.
    3. **Links.** Each file moved one folder deeper, and `migrate` does not rewrite the relative links inside it. Run `lint` and repair each link it reports as pointing at nothing.
-   4. **Content, one SDD at a time.** Run `lint SDDnnn` for the leads, then read the whole SDD and bring it to `Content`. Shorten an abstract over the limit. Delete any note on how to cite or number the doc: the instructions block holds those rules now, and an old note may contradict them. The SDDs are independent of each other, so where you can hand work to subagents, give each SDD its own.
+   4. **Content, one SDD at a time.** Run `lint SDDnnn` for the leads, then read the whole SDD and bring it to `Content`. Shorten a summary over the limit. Delete any note on how to cite or number the doc: the instructions block holds those rules now, and an old note may contradict them. The SDDs are independent of each other, so where you can hand work to subagents, give each SDD its own.
    5. **The agent instructions.** Replace the old SDD rules, as `The agent instructions` in [the configuration reference](references/config.md) describes. `check` may report example ids in the old rules, and replacing them clears those.
 
 Design docs named another way, such as `SDD-001-mail.md` or a `design/` folder, are not SDDs to the script. If the repository has them, ask whether to bring them into the format. That work is manual: rename each file to `SDDnnn-<slug>.md` under `paths.sddRoot`, then migrate.
@@ -155,7 +155,7 @@ node "${CLAUDE_SKILL_DIR}/scripts/doc-check.js" <command>
 
 `check` then lists what fix cannot repair. The usual cases:
 
-- **An abstract over 500 characters.** Shorten it.
+- **A summary over 500 characters.** Shorten it.
 - **A reference to a section that does not exist.** Correct the reference, or add the missing heading. An anchor that exists only as a numbered list item, for example, needs a real heading.
 - **A label where a section number belongs.** Cite the section it means, or drop the reference.
 - **A line-number citation.** Cite the symbol instead.

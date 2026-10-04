@@ -117,7 +117,7 @@ records the architecture it added — and writes nothing for a bug fix, a refact
 statement a task finds the code contradicts is corrected too, change or not; what a task had to
 work out about an area is recorded once you agree.
 
-Each SDD is a folder, `SDDnnn-<slug>/`, whose `README.md` holds the abstract and a generated index.
+Each SDD is a folder, `SDDnnn-<slug>/`, whose `README.md` holds the summary and a generated index.
 When a file passes `sdd.maxLines`, its largest subsections move into files named for their anchors,
 leaving behind a pointer — the heading, linking the new file — and a section file that fits back
 into its parent's is merged back, so the agent always reads whole files instead of grepping a long

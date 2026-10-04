@@ -16,8 +16,8 @@ The knowledge base sits beside the SDDs, which hold how the repository's own cod
 1. **Gather what to add.** Take it from the user's request, or from what this conversation found: research results, a service's documented behaviour, a rule an outside party enforces, something the user stated. Hold each fact against `What belongs`.
 2. **Ask the user**, unless they asked for this. List each fact in one line, with its source and the page it would go to: an existing page by its id, or a new one. Write only what they confirm. When nothing qualifies, say so in one line and stop. Do not read the config and do not ask anything else.
 3. **Read the configuration**, running its init if needed. See `Configuration`.
-4. **Find the pages.** List the folders in `paths.kbRoot`. When a folder name is not enough, read the first paragraph of its `README.md`. For each page you will change, read its `README.md` first, the abstract and then the index, then the sections you will touch.
-5. **Decide where each fact goes:** a correction to a section, a new section in the page whose abstract names the topic, or a new page for a topic no page covers. `next KBDOC` gives a new page its id. Keep one page per topic.
+4. **Find the pages.** List the folders in `paths.kbRoot`. When a folder name is not enough, read the first paragraph of its `README.md`. For each page you will change, read its `README.md` first, the summary and then the index, then the sections you will touch.
+5. **Decide where each fact goes:** a correction to a section, a new section in the page whose summary names the topic, or a new page for a topic no page covers. `next KBDOC` gives a new page its id. Keep one page per topic.
 6. **Write it**, following [the format](references/format.md) and `Content`. Read the format before you write.
 7. **Run `fix`, then `check`, then `lint`**, all scoped to the pages you wrote. Repair what `check` still reports. Each `lint` warning is a lead: confirm it, and correct the text where it is wrong.
 8. **Report.** See `Finish`.
@@ -80,7 +80,7 @@ node "${CLAUDE_SKILL_DIR}/scripts/doc-check.js" <command>
 | `check KBDOCnnn …` | After `fix`. It runs every rule, including references to those pages from anywhere in the repository |
 | `lint KBDOCnnn …` | After `check`. On a knowledge-base page it reports labels in titles, paths in backticks the repository does not have, and links that point at nothing. It does not flag history wording, code samples or outside names: on these pages those are content |
 
-`fix` refuses to touch a page with a structural problem: an anchor defined twice, a section whose parent does not exist, an unnumbered heading at section level, or text under a pointer. Repair those by hand first, then run it again. `check` then lists what fix cannot repair: an abstract over 500 characters, a reference to a section that does not exist, a label where a section number belongs, a section over the limit with no subsections to move out.
+`fix` refuses to touch a page with a structural problem: an anchor defined twice, a section whose parent does not exist, an unnumbered heading at section level, or text under a pointer. Repair those by hand first, then run it again. `check` then lists what fix cannot repair: a summary over 500 characters, a reference to a section that does not exist, a label where a section number belongs, a section over the limit with no subsections to move out.
 
 The Stop hook, where it is set up, runs the same rules at the end of every turn on the docs changed since `HEAD`. When it sends the turn back, do what it says. Without it, step 7 is the only check, so never skip it.
 

@@ -17,13 +17,13 @@ A new doc starts as a single `README.md`:
 ```markdown
 # <PREFIX>nnn — <Title>
 
-<The abstract: one paragraph of at most 500 characters. What this doc covers, and which parts of
+<The summary: one paragraph of at most 500 characters. What this doc covers, and which parts of
 the system or of the outside world it spans.>
 
 ## §1 <First section>
 ```
 
-After the abstract, the README may hold a few short lines. Then come the sections, and the pointers to the ones in files of their own. `fix` adds the `## Index` block: every section, each entry linking its heading, `#<id>` in `README.md` itself and `<file>#<id>` elsewhere, with the id GitHub and VS Code give the heading. Never edit that block by hand.
+After the summary, the README may hold a few short lines. Then come the sections, and the pointers to the ones in files of their own. `fix` adds the `## Index` block: every section, each entry linking its heading, `#<id>` in `README.md` itself and `<file>#<id>` elsewhere, with the id GitHub and VS Code give the heading. Never edit that block by hand.
 
 ### Sections
 
