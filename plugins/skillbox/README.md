@@ -113,7 +113,9 @@ An SDD is agent-written memory of one feature area or shared mechanism, committe
 repository: what the area does, how its parts fit, the rules other code follows. A rule several
 areas follow is stated once, in the SDD of the mechanism that enforces it, and cited elsewhere. The next agent reads it before changing that
 area. At the end of a task that changed code, the skill corrects what the change made wrong and
-records the architecture it added — and writes nothing for a bug fix, a refactor or a field.
+records the architecture it added — and writes nothing for a bug fix, a refactor or a field. A
+statement a task finds the code contradicts is corrected too, change or not; what a task had to
+work out about an area is recorded once you agree.
 
 Each SDD is a folder, `SDDnnn-<slug>/`, whose `README.md` holds the abstract and a generated index.
 When a file passes `sdd.maxLines`, its largest subsections move into files named for their anchors,

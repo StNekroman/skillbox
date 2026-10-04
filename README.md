@@ -26,7 +26,7 @@ Drilling in:
 | [`skillbox:fork-tree`](plugins/skillbox/README.md#fork-tree)                                | Show where this session sits among its forks                                        |
 | [`skillbox:draft-ticket`](plugins/skillbox/skills/draft-ticket/README.md)                   | Settled research becomes one ticket file per deliverable                            |
 | [`skillbox:to-adr`](plugins/skillbox/skills/to-adr/README.md)                               | A settled architecture decision becomes an ADR; anything less, none                 |
-| [`skillbox:to-sdd`](plugins/skillbox/skills/to-sdd/README.md)                               | After a code change, the SDDs it touched are made true again                        |
+| [`skillbox:to-sdd`](plugins/skillbox/skills/to-sdd/README.md)                               | The SDDs are made true again after a code change, or when one is found wrong        |
 | [`skillbox:to-kb`](plugins/skillbox/skills/to-kb/README.md)                                 | Research and outside facts worth keeping become knowledge-base pages, sources cited |
 | [`skillbox-jira:jira-push-ticket`](plugins/skillbox-jira/skills/jira-push-ticket/README.md) | A draft becomes a real issue, and the repository is left consistent                 |
 

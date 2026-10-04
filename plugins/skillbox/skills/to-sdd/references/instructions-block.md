@@ -22,6 +22,12 @@ This repository keeps two stores of docs written by agents for agents, one folde
   search that store's `SDDnnn-*/` or `KBDOCnnn-*/` folder for the heading that starts with `§x.y `.
 - **When a task that changed code is done, invoke the `to-sdd` skill.** It decides whether an SDD
   has to change, and makes the change.
+- **When the code contradicts an SDD you read, note it, and invoke `to-sdd` when the task is
+  done**, even if the task changed no code. It corrects the SDD without asking, except a rule the
+  code breaks: that may be a bug, so it reports it instead.
+- **When you had to work out how an area works, and no SDD holds what you found, ask the user
+  when the task is done whether to record it; on yes, invoke `to-sdd`.** What you found may be a
+  flow, a rule or a gotcha. Ask about what you worked out, not about every file no SDD covers.
 - **When a task turned up research or facts about the outside world worth keeping, ask the user
   whether to add them to the knowledge base; on yes, invoke the `to-kb` skill.** The user may also
   ask for it directly.

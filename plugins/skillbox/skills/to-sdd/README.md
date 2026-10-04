@@ -3,7 +3,8 @@
 Keeps a repository's SDDs true. An SDD is agent-written memory of one feature area or shared
 mechanism — what it does, how its parts fit, the rules other code follows — committed to the
 repository and read by the next agent before it changes that area. The skill runs at the end of a task that changed code and
-corrects, extends or creates the SDDs the change touched. Beside the SDDs sits the repository's
+corrects, extends or creates the SDDs the change touched. It also corrects what a task found an SDD
+getting wrong, change or not, and records what a task worked out about an area once you agree. Beside the SDDs sits the repository's
 knowledge base — pages about the world outside the code — which [to-kb](../to-kb/README.md) keeps;
 this skill never edits those pages.
 
@@ -68,7 +69,16 @@ Knowledge-base pages, `KBDOCnnn` under `paths.kbRoot`, share this format; the ru
 
 ## When it fires
 
-At the end of a task that changed code. Installing the plugin is not enough to make that happen:
+At the end of a task that changed code. Also at the end of a task that changed none, in two cases:
+
+- **The agent found an SDD statement the code contradicts.** It is corrected without asking, since
+  the next agent would trust it. The exception is a rule other code must follow: code that breaks
+  it may be the bug, so the skill leaves the rule and reports the breach.
+- **The agent had to work out how an area works, and no SDD holds what it found.** It asks you
+  first, since every recorded line is one more to keep true. On yes, the skill reads the area's
+  code, rather than writing up the one path the task saw.
+
+Installing the plugin is not enough to make any of that happen:
 a skill is picked by matching its description to a request, and "the task is done" is not a
 request. So on first use the skill runs an init shared with `to-kb`: it sets up both stores in
 `.skillbox/tickets.json`, and proposes one block for the repository's agent instructions, telling
