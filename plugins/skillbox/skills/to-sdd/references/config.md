@@ -26,10 +26,12 @@ nor `paths.kbRoot`.
     "docRoots": ["devdoc/architecture-decisions", "devdoc/kb", "devdoc/sdd", "devdoc/specs", "devdoc/tech"]
   },
   "sdd": {
-    "maxLines": 500
+    "maxLines": 500,
+    "index": { "path": "devdoc/sdd/index.generated.md", "summary": "paragraph", "depth": 0 }
   },
   "kb": {
-    "maxLines": 500
+    "maxLines": 500,
+    "index": { "path": "devdoc/kb/index.generated.md", "summary": "paragraph", "depth": 0 }
   }
 }
 ```
@@ -39,16 +41,33 @@ nor `paths.kbRoot`.
 | `paths.sddRoot` | Where SDD folders live, relative to the repository root. Read by `to-sdd`, the script and the Stop hook |
 | `paths.kbRoot` | Where knowledge-base page folders live, and their `attachments/` folder. Read by `to-kb`, the script and the Stop hook |
 | `sdd.maxLines`, `kb.maxLines` | The most lines one file of that type may hold before `doc-check.js fix` moves its subsections into files of their own. No default: the init writes them |
+| `sdd.index`, `kb.index` | The store's index: one file listing every doc, its title linking its `README.md`, then its summary. Without the key there is no index. See `The index` |
 | `paths.docRoots` | Directories searched for inbound references to a ticket draft when it is pushed to a tracker. These skills only add `sddRoot` and `kbRoot` to it |
+
+### The index
+
+An agent reads the store's index to choose which docs to open, instead of guessing from folder
+names. `doc-check.js` writes it from the docs and rewrites it whenever they no longer match: `fix`
+after it changes docs, `index` when run by hand, and the start-of-turn hook before every prompt,
+where the hook is set up. So the index is never edited and never committed.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `path` | `<root>/index.generated.md` | Where the file goes, relative to the repository root. Not inside a doc folder. Two stores may name the same file; it then lists both, under a heading each |
+| `summary` | `"paragraph"` | What each entry shows of the doc's summary: `"paragraph"`, the whole of it; `"sentence"`, its first sentence; `"none"` |
+| `depth` | `0` | How many levels of section titles each entry lists under the summary. `0` lists none |
+
+A key left out takes its default, so `"index": {}` is enough. With summaries near the limit, the
+defaults make about 600 characters per doc, and one level of sections about 900.
 
 ## When the file or a key is missing
 
 Do not guess, and do not fall back to defaults. Run this, then continue with the task that was
 asked — the init is a step inside the work, not a reason to stop and hand it back.
 
-The init covers all four keys above, whichever skill runs it. Fill only the ones that are missing:
-a repository set up for SDDs before the knowledge base existed gets `paths.kbRoot` and
-`kb.maxLines` now, and nothing else changes.
+The init covers all six keys above, whichever skill runs it. Fill only the ones that are missing:
+a repository set up for SDDs before the knowledge base existed gets `paths.kbRoot`, `kb.maxLines`
+and `kb.index` now, and one set up before the index existed gets `sdd.index` and `kb.index`.
 
 1. **Find the repository root.** `git rev-parse --show-toplevel`. Create `.skillbox/` there if it
    does not exist, and write the file inside it.
@@ -86,6 +105,19 @@ they are there to tune. Never leave one out: `doc-check.js` has no default, so t
 force is always the one written in the file. A lower value later splits the files over it; a
 higher one merges nothing back, since no path may move.
 
+### `sdd.index` and `kb.index`
+
+Write each with every key spelled out, so the values in force are visible:
+`{ "path": "<root>/index.generated.md", "summary": "paragraph", "depth": 0 }`. Do not ask; say in
+the one-line report that `summary` and `depth` are there to tune.
+
+Then make git ignore both files. Add their paths to the repository's root `.gitignore`, creating it
+if there is none, unless a rule there already covers them. `check` warns about an index git would
+commit: a committed copy conflicts on every merge that brings new docs, and goes stale wherever no
+hook rewrites it.
+
+Then run `doc-check.js index`, which writes both files.
+
 ## The agent instructions
 
 An agent reads the SDDs before changing code, and the knowledge base before working with an
@@ -106,8 +138,8 @@ Look for both, then pick where the block goes:
 
 Then, for each file the block goes in:
 
-- **It has no rules for either store.** Propose adding [the instructions block](instructions-block.md), with `<sddRoot>` and `<kbRoot>` filled in.
-- **It already has rules in an older form** — an SDD-only block from before the knowledge base, or SDD rules written another way. Propose replacing them with the block, and show both the lines that go and the lines that come.
+- **It has no rules for either store.** Propose adding [the instructions block](instructions-block.md), with `<sddRoot>`, `<kbRoot>`, `<sddIndex>` and `<kbIndex>` filled in: the roots, and the two `index.path` values.
+- **It already has rules in an older form** — the block from before the index, an SDD-only block from before the knowledge base, or SDD rules written another way. Propose replacing them with the block, and show both the lines that go and the lines that come.
 
 Write only after the user confirms. These files shape every future session in the repository.
 
@@ -121,6 +153,8 @@ ignore that one path:
 .skillbox/cache/
 ```
 
-Nothing here holds a secret, so nothing else needs ignoring. Suggest that line when writing the
-config into a repository that has no `.skillbox/` yet, rather than ignoring `.skillbox/` wholesale
-— that would drop the configuration the team is meant to share.
+The store indexes are derived too, but sit beside the docs by default, where an agent listing the
+store finds them; their own lines in `.gitignore` cover them. Nothing here holds a secret, so
+nothing else needs ignoring. Suggest the `.skillbox/cache/` line when writing the config into a
+repository that has no `.skillbox/` yet, rather than ignoring `.skillbox/` wholesale — that would
+drop the configuration the team is meant to share.

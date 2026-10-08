@@ -15,7 +15,7 @@ MCP server costs nothing until used — so an addon is a unit someone can declin
 
 | Plugin                                               | What it does                                                                                                                                             | Components                                                                    |
 | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| [**skillbox**](plugins/skillbox/README.md)           | Core. Fork a conversation at a chosen point, navigate the fork tree, draft tickets and ADRs as markdown, keep SDDs true and a knowledge base beside them | 2 commands, 4 skills, 1 hook, [5 scripts](plugins/skillbox/scripts/README.md) |
+| [**skillbox**](plugins/skillbox/README.md)           | Core. Fork a conversation at a chosen point, navigate the fork tree, draft tickets and ADRs as markdown, keep SDDs true and a knowledge base beside them | 2 commands, 4 skills, 2 hooks, [5 scripts](plugins/skillbox/scripts/README.md) |
 | [**skillbox-jira**](plugins/skillbox-jira/README.md) | Jira addon. Push a ticket draft to Jira as an issue                                                                                                      | 1 skill, 1 MCP server. Depends on `skillbox`                                  |
 
 Drilling in:
@@ -69,15 +69,16 @@ claude --plugin-dir /path/to/your/clone/plugins/skillbox
 
 The five skills are plain `SKILL.md` folders and carry everything they need, so an agent that reads
 that format can use one copied into its skills directory. The commands are Claude Code only: they
-drive Claude Code's own sessions. The plugin sets up the Stop hook only in Claude Code, but its
-script also speaks the end-of-turn hook formats of Codex, Copilot CLI, Gemini CLI and Cursor, so it
-can be wired into those by hand — [to-sdd's README](plugins/skillbox/skills/to-sdd/README.md#the-script-and-the-hook)
-says how. Without the hook `to-sdd` and `to-kb` still run their checks themselves; only the
-end-of-turn check is missing. `jira-push-ticket` needs the Atlassian MCP server added to that agent by hand.
+drive Claude Code's own sessions. The plugin sets up its two hooks only in Claude Code — the Stop
+hook that checks the docs and the start-of-turn hook that keeps their indexes current — but its
+script also speaks the hook formats of Codex, Copilot CLI, Gemini CLI and Cursor, so both can be
+wired into those by hand — [to-sdd's README](plugins/skillbox/skills/to-sdd/README.md#the-script-and-the-hooks)
+says how. Without the hooks `to-sdd` and `to-kb` still run their checks and rewrite the indexes
+themselves; only the end-of-turn check, and an index current after a pull, are missing. `jira-push-ticket` needs the Atlassian MCP server added to that agent by hand.
 
 ## Requirements
 
 `skillbox` shells out to Node. Developed against v22; anything with `crypto.randomUUID` will do. Its
-doc hook also needs git.
+Stop hook also needs git.
 
 `skillbox-jira` needs the Atlassian MCP server, which it ships itself.

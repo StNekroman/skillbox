@@ -54,8 +54,8 @@ with a suggestion to run `to-kb`.
 
 | | |
 |---|---|
-| Config | `paths.kbRoot` and `kb.maxLines` — see [references/config.md](references/config.md). The limit has no default; the init writes 500 |
-| Git | For `refs --changed`, `next` and the hook. `check`, `fix` and `lint` work without it |
+| Config | `paths.kbRoot`, `kb.maxLines` and `kb.index` — see [references/config.md](references/config.md). The limit has no default; the init writes 500, and git-ignores the index file |
+| Git | For `refs --changed`, `next` and the Stop hook. `check`, `fix`, `lint`, `index` and the start-of-turn hook work without it |
 | Tools | Read, grep, git, web access for research, and the script. It never runs builds or tests |
 
 ## Files here
@@ -66,7 +66,7 @@ with a suggestion to run `to-kb`.
 | `references/format.md` | the doc format, shared with `to-sdd` |
 | `references/config.md` | the keys of `.skillbox/tickets.json` both skills read, and the init that fills them |
 | `references/instructions-block.md` | the block proposed for a repository's `CLAUDE.md` or `AGENTS.md`, shared with `to-sdd` |
-| `scripts/doc-check.js` | the checker the skill and the Stop hook run, shared with `to-sdd` |
+| `scripts/doc-check.js` | the checker the skill and both hooks run, shared with `to-sdd` |
 | `scripts/lib/doc-model.js` | the doc model the checker is built on |
 
 `references/` and `scripts/` are copies written by `npm run sync` from the plugin's

@@ -2,7 +2,7 @@
 name: to-sdd
 description: Keep the repository’s SDDs — the agent-written memory of how each feature area and each shared mechanism works — true. Corrects the sections a code change made wrong or a task found the code contradicts, adds sections for new architecture, creates an SDD for an area none covers, and keeps each file under the size limit. Writes nothing when the change is below the bar. Use at the end of a task that changed code, that found an SDD statement the code contradicts, or that worked out how an area works and the user agreed to record it; or when asked to create, update or migrate SDDs; do not use for knowledge-base pages, ADRs, tickets or code comments.
 metadata:
-  prompt-version: "2026-10-04.4"
+  prompt-version: "2026-10-07.1"
 ---
 
 # Keep the SDDs true
@@ -24,7 +24,7 @@ SDDs sit beside the repository's knowledge base: pages about the world outside t
 3. **Read the configuration**, running its init if needed. See `Configuration`.
 4. **Find the SDDs the change touches.**
    - Run `refs --changed`. It lists every section the changed code cites, where each section lives, and which lines cite it. It also lists the knowledge-base sections that link a changed file: keep those for the report, and leave the pages alone.
-   - For an area the change entered without citing it, list the folders in `paths.sddRoot`. When a folder name is not enough, read the first paragraph of its `README.md`.
+   - For an area the change entered without citing it, read the SDD index, `sdd.index.path`: every SDD with its summary. Without one, list the folders in `paths.sddRoot` and read the first paragraph of each `README.md`.
    - For a rule the change makes code follow, grep `paths.sddRoot` for the names of the mechanism behind it. Another SDD may already hold the rule. See `A rule several areas follow`.
 5. **Read each affected SDD.** Start with its `README.md`: the summary, then the index. Every index entry links its section's heading, in the file that holds it: `#<id>` in `README.md` itself, `<file>#<id>` elsewhere. Then read the sections the change touches, and their parents. For each section you will correct or remove, run `refs --to` on it: a section of another SDD that cites it may need the same correction.
 6. **Decide what each SDD needs:** corrected statements, new sections, a new SDD, or nothing.
@@ -77,7 +77,7 @@ When two SDDs could hold it, choose the one whose summary names the area, and na
 Some rules hold in many areas: every query is scoped by tenant, every handler sits behind the auth guard. State such a rule once, in the SDD of the mechanism that enforces it. Every other SDD says how its own area applies the rule, and cites that section, `SDDnnn§x.y`. Never restate it: when the rule changes, `refs --changed` finds the section that the mechanism's code cites, and a copy in another SDD stays wrong.
 
 - **A rule starts where it was built.** While only one area follows it, it stays a section of that area's SDD.
-- **When a second area comes to rely on it, move it into an SDD of its own**, named for the mechanism, so that the folder listing leads the next agent to it.
+- **When a second area comes to rely on it, move it into an SDD of its own**, named for the mechanism, so that the SDD index and the folder listing lead the next agent to it.
   1. Take the id from `next SDD`, and write the section and its subsections in the new SDD.
   2. Remove the old section as [the format](references/format.md) says, titled `(removed; see SDDnnn§x.y)` with its new id, and each of its subsections the same way.
   3. Run `refs --to` on the old section, and repoint every citation it lists, in code and in other SDDs. `check` warns until none is left.
@@ -86,9 +86,9 @@ Some rules hold in many areas: every query is scoped by tenant, every handler si
 
 ## Configuration
 
-Read `.skillbox/tickets.json` under the repository root. It supplies `paths.sddRoot` and `sdd.maxLines`, and `paths.kbRoot` and `kb.maxLines` for the knowledge base.
+Read `.skillbox/tickets.json` under the repository root. It supplies `paths.sddRoot`, `sdd.maxLines` and `sdd.index`, and `paths.kbRoot`, `kb.maxLines` and `kb.index` for the knowledge base.
 
-If the file is missing, or lacks any of those four keys, run the init in [the configuration reference](references/config.md), then carry on. The init writes the missing keys, and in the same run settles the repository's agent instructions, which name both stores. The script has no default limit, so the value in force is always the one in the file.
+If the file is missing, or lacks any of those six keys, run the init in [the configuration reference](references/config.md), then carry on. The init writes the missing keys, and in the same run settles the repository's agent instructions, which name both stores. The script has no default limit, so the value in force is always the one in the file.
 
 A directory the user names in the request wins for this run. When the init is running anyway, that directory is also the answer to its question.
 
@@ -144,10 +144,11 @@ node "${CLAUDE_SKILL_DIR}/scripts/doc-check.js" <command>
 | `refs --changed`               | Step 4: the sections that changed code cites, and the knowledge-base sections that link changed files                                                                                                                                                                                                           |
 | `refs --to SDDnnn§x.y`         | Step 5, and before moving a section to another SDD: everything that cites it, other SDDs included                                                                                                                                                                                                               |
 | `next SDD`                     | Before creating an SDD: the id it takes                                                                                                                                                                                                                                                                         |
-| `fix SDDnnn …`                 | After writing. It regenerates the index, breadcrumbs and pointers, sets heading levels, puts sections where they belong, merges back section files that fit, and moves the largest sections out of files over the limit. It rewrites, creates and deletes files, so read a file again before editing it further |
+| `fix SDDnnn …`                 | After writing. It regenerates the index, breadcrumbs and pointers, rewrites the store's index file, sets heading levels, puts sections where they belong, merges back section files that fit, and moves the largest sections out of files over the limit. It rewrites, creates and deletes files, so read a file again before editing it further |
 | `check SDDnnn …`               | After `fix`. It runs every rule, including references to those SDDs from anywhere in the repository                                                                                                                                                                                                             |
 | `lint SDDnnn …`                | After `check`. Leads for the `Content` rules, all warnings: wording that tells history, fenced code, names in backticks that the code no longer has, and links that point at nothing                                                                                                                            |
 | `migrate --dry-run`, `migrate` | Single-file SDDs into folders, and references into the full form. See `SDDs in the old format`                                                                                                                                                                                                                  |
+| `index`                        | When the SDD index is missing or behind the docs: rewrites it. `fix` and the start-of-turn hook keep it current, so this is seldom needed                                                                                                                                                                       |
 
 ### After fix and check
 
@@ -163,11 +164,12 @@ node "${CLAUDE_SKILL_DIR}/scripts/doc-check.js" <command>
 
 `lint` is not a rule check. History wording is a phrase list, so it also catches some sentences about the present. Fenced code is often copied code, but not always. A name the code lacks may be stale, or may be a library's. Confirm each warning, and change only the text that is wrong.
 
-### The Stop hook
+### The hooks
 
-The hook runs only where it is set up: the Claude Code plugin sets it up, and another agent needs it wired in by hand. Where it is set up, it runs the same rules at the end of every turn, on the docs changed since `HEAD`. When it sends the turn back, do what it says: run the `fix` command it prints, or repair the lines it lists.
+The hooks run only where they are set up: the Claude Code plugin sets them up, and another agent needs them wired in by hand.
 
-Without the hook, nothing checks the SDDs after you. Step 8 is then the only check, so never skip it.
+- **The Stop hook** runs the same rules at the end of every turn, on the docs changed since `HEAD`. When it sends the turn back, do what it says: run the `fix` command it prints, or repair the lines it lists. Without it, nothing checks the SDDs after you. Step 8 is then the only check, so never skip it.
+- **The start-of-turn hook** rewrites the index files before every prompt, so a pull, a checkout or an edit since the last turn shows in them. It says nothing. Without it, `fix` still rewrites them after you write.
 
 ## Finish
 

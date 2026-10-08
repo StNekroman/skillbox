@@ -1,7 +1,7 @@
 {
   "name": "skillbox",
-  "version": "2.4.0",
-  "description": "The dependency-free core of the skillbox family. Fork a Claude Code conversation into a new session truncated at a chosen point and navigate the resulting fork tree; write settled research into ticket draft files using a fixed ticket structure; record settled architecture decisions as ADRs; keep the repository’s SDDs true as the code changes, and add research and outside facts to a knowledge base beside them, with a Stop hook that checks both. Needs only Node.",
+  "version": "2.5.0",
+  "description": "The dependency-free core of the skillbox family. Fork a Claude Code conversation into a new session truncated at a chosen point and navigate the resulting fork tree; write settled research into ticket draft files using a fixed ticket structure; record settled architecture decisions as ADRs; keep the repository’s SDDs true as the code changes, and add research and outside facts to a knowledge base beside them, with a Stop hook that checks both and a start-of-turn hook that keeps an index of each current. Needs only Node.",
   "author": {
     "name": "Roman Nefedov",
     "email": "stnekroman@gmail.com"

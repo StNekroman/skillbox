@@ -10,7 +10,7 @@ Each doc is a folder, `<root>/<PREFIX>nnn-<slug>/`.
 
 - `<PREFIX>nnn` comes from `next <PREFIX>`. A number is never reused: something may still cite the old one.
 - The slug is the title in kebab-case.
-- The folder listing is how an agent finds a doc, so the title names the area or the topic in the words the code or its readers use: `SDD013-multi-seller-marketplace`, `KBDOC002-nova-poshta-api`.
+- The store's index and the folder listing are how an agent finds a doc, so the title names the area or the topic in the words the code or its readers use: `SDD013-multi-seller-marketplace`, `KBDOC002-nova-poshta-api`.
 
 A new doc starts as a single `README.md`:
 
@@ -22,6 +22,8 @@ the system or of the outside world it spans.>
 
 ## §1 <First section>
 ```
+
+The summary is what the store's index shows for the doc, so an agent picks the doc from it without opening the folder: name the parts of the system or of the outside world it covers in the words a task would use, and say what it does not cover where that is easy to assume. The index is a generated file, never edited and never committed; `fix` rewrites it.
 
 After the summary, the README may hold a few short lines. Then come the sections, and the pointers to the ones in files of their own. `fix` adds the `## Index` block: every section, each entry linking its heading, `#<id>` in `README.md` itself and `<file>#<id>` elsewhere, with the id GitHub and VS Code give the heading. Never edit that block by hand.
 

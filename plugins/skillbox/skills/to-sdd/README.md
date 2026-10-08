@@ -97,7 +97,7 @@ It does not write ADRs — that is [to-adr](../to-adr/README.md)'s job — but a
 ADR behind a design choice when there is one. Nor does it edit knowledge-base pages: when a change
 touches code that a page links, the report names that page's section and suggests `to-kb`.
 
-## The script and the hook
+## The script and the hooks
 
 `scripts/doc-check.js`, in this folder, does everything mechanical, so the model never moves text
 between files by hand. It serves SDDs and knowledge-base pages alike. The skill carries its own copy
@@ -115,6 +115,7 @@ internals and tests are documented in the plugin's
 | `refs --to ID[§x.y]` | Everything that cites a doc or a section |
 | `next SDD` | The id a new SDD takes, counting every number in git history, deleted ones included |
 | `migrate [--dry-run]` | Single-file SDDs (`SDDnnn-slug.md`) into folders, links to them into ids, short-form references into the full form |
+| `index` | Rewrites each store's index file, `sdd.index` and `kb.index`, where it no longer matches the docs. `fix` and `migrate` do it too |
 
 `check` sees a reference however it was written, a section's title included: in a list
 (`SDD006§2.4.1/§12`, `SDD013§4.2 and §5.1`), after a space (`SDD007 §8`), in parentheses after an
@@ -137,12 +138,24 @@ hand: `node <this folder>/scripts/doc-check.js hook` on their `Stop`, `agentStop
 `stop` event. That follows their documentation; only Claude Code has been tried. Where no hook is
 set up, the skill's own `fix` and `check` are the only check.
 
+A second hook keeps the **store indexes** current: `index-hook`, at the start of every turn. An
+agent reads the index to choose which docs to open, and the index is git-ignored, so a pull, a
+checkout, a merge, a rebase or a hand edit leaves it behind the docs until something rewrites it.
+The hook rewrites each index file whose text no longer matches the docs — measured on Windows,
+0.15 s for 20 SDDs and 0.27 s for a hundred, about 0.1 s of it Node starting — prints nothing,
+never blocks the prompt, and always exits 0. The plugin runs it on Claude Code's `UserPromptSubmit`
+in the background. Wire it into another agent as `node <this folder>/scripts/doc-check.js index-hook` on Codex's
+`UserPromptSubmit`, Copilot CLI's `userPromptSubmitted`, Gemini CLI's `BeforeAgent` or Cursor's
+`beforeSubmitPrompt`; Cursor gets the `{"continue":true}` it expects. Where it is not set up, `fix`
+still rewrites the index after the skill writes, and an agent that finds the file missing lists
+the folders instead.
+
 ## What it needs
 
 | | |
 |---|---|
-| Config | `paths.sddRoot` and `sdd.maxLines`, set up with `paths.kbRoot` and `kb.maxLines` — see [references/config.md](references/config.md). The limits have no default; the init writes 500 |
-| Git | For `refs --changed`, `next` and the hook. `check`, `fix`, `migrate` and `lint` work without it |
+| Config | `paths.sddRoot`, `sdd.maxLines` and `sdd.index`, set up with `paths.kbRoot`, `kb.maxLines` and `kb.index` — see [references/config.md](references/config.md). The limits have no default; the init writes 500, and git-ignores the index files |
+| Git | For `refs --changed`, `next` and the Stop hook. `check`, `fix`, `migrate`, `lint`, `index` and the start-of-turn hook work without it |
 | Tools | Read, grep, git, and the script. It never runs builds or tests |
 
 ## Files here
@@ -153,7 +166,7 @@ set up, the skill's own `fix` and `check` are the only check.
 | `references/format.md` | the doc format, shared with `to-kb` |
 | `references/config.md` | the keys of `.skillbox/tickets.json` both skills read, the init that fills them, and where the instructions block goes |
 | `references/instructions-block.md` | the block proposed for a repository's `CLAUDE.md` or `AGENTS.md`, shared with `to-kb` |
-| `scripts/doc-check.js` | the checker the skill and the Stop hook run |
+| `scripts/doc-check.js` | the checker the skill and both hooks run |
 | `scripts/lib/doc-model.js` | the doc model the checker is built on |
 
 `references/` and `scripts/` are copies written by `npm run sync`; edit the source in the

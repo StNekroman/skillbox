@@ -16,7 +16,7 @@ them.
 | [`to-adr`](skills/to-adr/README.md)             | skill   | Records a settled architecture decision as an ADR — and writes nothing when there is none               |
 | [`to-sdd`](skills/to-sdd/README.md)             | skill   | After a code change, corrects or extends the SDDs it touched — and writes nothing below the bar         |
 | [`to-kb`](skills/to-kb/README.md)               | skill   | Adds research and outside facts to the knowledge base, each with its source — and only what you confirm |
-| `hooks/hooks.json`                              | hook    | Stop hook: checks the SDDs and knowledge-base pages changed in a turn before the turn ends              |
+| `hooks/hooks.json`                              | hooks   | Stop hook: checks the SDDs and knowledge-base pages changed in a turn before the turn ends. Start-of-turn hook: keeps each store's index current |
 | [`scripts/`](scripts/README.md)                 | node    | The fork implementation, the doc checker’s source, and the tests of every script                        |
 
 Commands are documented here rather than beside their files: every `.md` in `commands/` registers
@@ -123,8 +123,14 @@ leaving behind a pointer — the heading, linking the new file — and a section
 into its parent's is merged back, so the agent always reads whole files instead of grepping a long
 one. References are ids, `SDD001§3.2`, never paths, so nothing breaks when files split or merge.
 
+Each store also has an index, `index.generated.md` by default: every doc, its title linking its
+`README.md`, then its summary, so an agent picks the docs to open from one file instead of guessing
+from folder names. It is generated and git-ignored, so it never conflicts on a merge. `fix`
+rewrites it after writing, and a start-of-turn hook rewrites it before every prompt, so a pull, a
+checkout or a rebase shows in it at once.
+
 The plugin's Stop hook checks the SDDs changed in a turn before the turn ends, and sends problems
-back to the agent. The plugin sets it up in Claude Code; other agents can have it wired in by hand.
+back to the agent. The plugin sets up both hooks in Claude Code; other agents can have them wired in by hand.
 It does nothing in a repository whose config names neither `paths.sddRoot` nor `paths.kbRoot`, and on
 first use the skill proposes the `CLAUDE.md` or `AGENTS.md` lines that make sessions read and
 update SDDs and the knowledge base at all. [The skill's README](skills/to-sdd/README.md) has the
@@ -176,10 +182,12 @@ installed on its own. The whole file:
     "docRoots": ["devdoc/architecture-decisions", "devdoc/kb", "devdoc/sdd", "devdoc/specs", "devdoc/tech"]
   },
   "sdd": {
-    "maxLines": 500
+    "maxLines": 500,
+    "index": { "path": "devdoc/sdd/index.generated.md", "summary": "paragraph", "depth": 0 }
   },
   "kb": {
-    "maxLines": 500
+    "maxLines": 500,
+    "index": { "path": "devdoc/kb/index.generated.md", "summary": "paragraph", "depth": 0 }
   },
   "domainNotes": ".github/copilot-instructions.md"
 }
@@ -191,6 +199,7 @@ installed on its own. The whole file:
 | `paths.adrRoot`, `paths.adrTemplate`       | `to-adr`                                                       | `to-adr`                                     |
 | `paths.sddRoot`, `sdd.maxLines`            | `to-sdd` or `to-kb`, one shared init                           | `to-sdd`, the shared script, the Stop hook   |
 | `paths.kbRoot`, `kb.maxLines`              | `to-sdd` or `to-kb`, one shared init                           | `to-kb`, the shared script, the Stop hook    |
+| `sdd.index`, `kb.index`                    | `to-sdd` or `to-kb`, one shared init                           | the shared script, the start-of-turn hook    |
 | `paths.docRoots`                           | `draft-ticket`; `to-adr`, `to-sdd` and `to-kb` add their roots | `jira-push-ticket`                           |
 | `domainNotes`                              | you, by hand                                                   | `draft-ticket`                               |
 | `jira.site`                                | whichever skill first cites or pushes an issue                 | `draft-ticket`, `to-adr`, `jira-push-ticket` |
@@ -200,11 +209,12 @@ What each key means, and the init that fills it, is in the skill's own reference
 [draft-ticket](skills/draft-ticket/references/config.md), [to-adr](skills/to-adr/references/config.md),
 [to-sdd and to-kb](skills/to-sdd/references/config.md) (one file, the same in both), and
 [jira-push-ticket](../skillbox-jira/skills/jira-push-ticket/references/config.md) in the addon.
-Commit the file. Ignore only `.skillbox/cache/`, the place for anything derived or per-developer.
+Commit the file. Ignore `.skillbox/cache/`, the place for anything derived or per-developer, and the
+index files, which the init adds to `.gitignore`.
 
 ## Requirements
 
-Node. Developed against v22; anything with `crypto.randomUUID` will do. The doc hook and
+Node. Developed against v22; anything with `crypto.randomUUID` will do. The Stop hook and
 `doc-check.js refs --changed` also need git.
 
 The fork commands drive Claude Code's own session store and CLI, including two undocumented flags.

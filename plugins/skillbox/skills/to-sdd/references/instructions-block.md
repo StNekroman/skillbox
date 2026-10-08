@@ -1,7 +1,8 @@
 <!-- The block to-sdd and to-kb propose for a repository's always-loaded agent instructions:
-CLAUDE.md, AGENTS.md, or both. Replace <sddRoot> with paths.sddRoot and <kbRoot> with paths.kbRoot,
-drop this comment, and write everything below it. The examples use letters, not digits, so the
-reference checker never mistakes them for real references. -->
+CLAUDE.md, AGENTS.md, or both. Replace <sddRoot> with paths.sddRoot, <kbRoot> with paths.kbRoot,
+<sddIndex> with sdd.index.path and <kbIndex> with kb.index.path, drop this comment, and write
+everything below it. The examples use letters, not digits, so the reference checker never mistakes
+them for real references. -->
 
 ## SDDs and the knowledge base
 
@@ -12,12 +13,16 @@ This repository keeps two stores of docs written by agents for agents, one folde
 - `<kbRoot>/KBDOCnnn-<slug>/` — **the knowledge base**: what we know about the world the product
   lives in: outside services and their rules, legal requirements, research, know-how.
 
-- **Before you change code in an area, read its SDD.** List the folders in `<sddRoot>/`. When a
-  folder name is not enough, read the first paragraph of its `README.md`. Read the whole
-  `README.md` first: its index lists every section and links the file that holds it. Then read
-  the sections the change touches, and the sections of other SDDs they cite.
-- **Before you work with an outside service, a rule or a topic the knowledge base may cover, list
-  `<kbRoot>/`** and read the page that covers it, the same way.
+- **Before you change code in an area, read its SDD.** Find it in `<sddIndex>`, which lists every
+  SDD with its summary. The file is generated and git-ignored: when it is missing, list the
+  folders in `<sddRoot>/` and read the first paragraph of each `README.md` instead. Read the SDD's
+  whole `README.md` first: its index lists every section and links the file that holds it. Then
+  read the sections the change touches, and the sections of other SDDs they cite.
+- **Before you work with an outside service, a rule or a topic the knowledge base may cover, read
+  `<kbIndex>`** and the page that covers it, the same way.
+- **To find a rule or a fact no summary names, search the section headings** of the whole store:
+  each names its approach, so `^#+ §[0-9.]+ .*(word|synonym)` finds sections in docs you would not
+  have opened.
 - **A section is cited as `SDDnnn§x.y` or `KBDOCnnn§x.y`**, in code and in docs. To find one,
   search that store's `SDDnnn-*/` or `KBDOCnnn-*/` folder for the heading that starts with `§x.y `.
 - **When a task that changed code is done, invoke the `to-sdd` skill.** It decides whether an SDD

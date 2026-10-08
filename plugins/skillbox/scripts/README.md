@@ -4,7 +4,7 @@ The implementation behind `/skillbox:fork-at` and `/skillbox:fork-tree`, and the
 script in the plugin. The command files in `../commands/` invoke the fork scripts through
 `${CLAUDE_PLUGIN_ROOT}`.
 
-The doc checker behind the `to-sdd` and `to-kb` skills and the Stop hook has its one editable
+The doc checker behind the `to-sdd` and `to-kb` skills and both hooks has its one editable
 source here, in `doc-check/`, with the references both skills share. Each skill carries identical
 copies — the script in its own `scripts/`, the shared references in its `references/` — so that
 the skill folder works when it is installed on its own; `npm run sync` writes the copies from the
@@ -17,8 +17,8 @@ copy through `${CLAUDE_SKILL_DIR}`; `../hooks/hooks.json` runs the source throug
 | `fork-at.js` | Resolves a cut point and opens a window at once; in that window, creates the child with one headless turn and resumes it |
 | `fork-tree.js` | Renders the fork tree; interactive picker when run from a TTY |
 | `lib/fork-graph.js` | Shared: transcript reading, edge collection, session metadata, terminal launching |
-| `doc-check/doc-check.js` | Doc checks and repairs, for SDDs and knowledge-base pages — `check`, `fix`, `migrate`, `lint`, `refs`, `next` — and the Stop hook, `hook`. Disk and git work only |
-| `doc-check/lib/doc-model.js` | The doc model, pure: the doc types, parsing a doc, the rules, the mechanical repairs, finding references and links, the content leads |
+| `doc-check/doc-check.js` | Doc checks and repairs, for SDDs and knowledge-base pages — `check`, `fix`, `migrate`, `lint`, `refs`, `next`, `index` — the Stop hook, `hook`, and the start-of-turn hook, `index-hook`. Disk and git work only |
+| `doc-check/lib/doc-model.js` | The doc model, pure: the doc types, parsing a doc, the rules, the mechanical repairs, finding references and links, the content leads, the store index's text |
 | `doc-check/references/` | What `to-sdd` and `to-kb` share word for word: the format, the configuration and its init, the agent-instructions block |
 | `test/` | Unit and end-to-end tests for all of the above, run with Node's built-in runner |
 
@@ -224,6 +224,20 @@ The hook never exits 2: Copilot documents only the JSON reply for a stop, and Cu
 ignores the exit code. The tests feed each documented input shape; only Claude Code runs it for
 real.
 
+**The store index is rebuilt, never patched.** `index`, `fix`, `migrate` and the start-of-turn
+hook all render every index file from the docs as they are and write it only when its text
+changed, through a temporary file renamed into place, so a reader never sees half of one. There
+is no marker of what changed since the last run: a correct one — the HEAD commit misses
+uncommitted edits and a `stash`, a folder's modification time misses edits inside it — costs
+nearly what a rebuild does, and the hook pays about 0.1 s to start Node either way. Two types whose
+`index.path` is the same share one file. The reference scans skip the index files, whose title
+links would read as citations by path, and `check` warns about one git would commit.
+
+**The start-of-turn hook never stands in the way.** `index-hook` reads `cwd` — Cursor's own
+`beforeSubmitPrompt`, `workspace_roots` — prints nothing, so it adds nothing to the agent's
+context, swallows every failure and exits 0. Cursor's own event gets `{"continue":true}`. Claude
+Code runs it in the background (`async`), so the prompt does not wait for it at all.
+
 ## Environment
 
 | Variable | Effect |
@@ -270,9 +284,10 @@ its `SKILLS` list. `.gitattributes` marks the copies generated, so a pull reques
 
 ## What they write
 
-`doc-check.js` writes only inside the repository it runs in, and only for `fix` and `migrate`
-without `--dry-run`: doc files — `fix` also deletes the section files it merges back — and, for
-`migrate`, the files whose links and references it rewrites. It never stages or commits. The hook, `check`, `lint`, `refs` and `next` write nothing.
+`doc-check.js` writes only inside the repository it runs in: for `fix` and `migrate` without
+`--dry-run`, doc files — `fix` also deletes the section files it merges back — and, for
+`migrate`, the files whose links and references it rewrites; for those two, `index` and the
+start-of-turn hook, the index files. It never stages or commits. The Stop hook, `check`, `lint`, `refs` and `next` write nothing.
 
 The fork scripts write in the config directory. Apart from the child's own transcript, whose
 `entrypoint` tags `fork-at.js` rewrites once after creating it, everything is additive and safe to

@@ -19,8 +19,12 @@
 //                               the KB sections that link them
 //   refs --to ID[§x.y]          everything that cites that doc or section
 //   next [PREFIX]               the id a new doc takes
+//   index                       rewrite each store's index file, <section>.index in the config,
+//                               where it no longer matches the docs
 //   hook                        the Stop hook: reads the hook input on stdin, checks the docs
 //                               changed since HEAD, prints a reply that sends the problems back
+//   index-hook                  the start-of-turn hook: reads the hook input on stdin, rewrites
+//                               the index files that no longer match the docs, says nothing
 //   --dry-run (fix, migrate) prints what would change and writes nothing.
 
 const fs = require('fs');
@@ -67,7 +71,7 @@ function findRoot(start) {
 }
 
 // One kind per doc type whose root the config names, in TYPES order: the type, where its docs
-// live, and its line limit.
+// live, its line limit, and its index file.
 function loadConfig(root) {
   let raw;
   try {
@@ -78,21 +82,54 @@ function loadConfig(root) {
   const kinds = [];
   for (const type of D.TYPES) {
     const docRoot = raw && raw.paths && raw.paths[type.rootKey];
-    const maxLines = raw && raw[type.section] ? raw[type.section].maxLines : undefined;
+    const own = raw && raw[type.section] ? raw[type.section] : {};
+    const maxLines = own.maxLines;
     // Resolved and made relative again, so `./docs/sdd`, `docs\sdd/` and `docs/sdd` all compare
     // equal to the paths git and the walk report, on every platform.
     const given = typeof docRoot === 'string' ? docRoot.trim().replace(/\\/g, '/') : '';
     if (!given) continue;
     const abs = path.resolve(root, given);
+    const rootRel = rel(root, abs);
     kinds.push({
       type,
-      rootRel: rel(root, abs),
+      rootRel,
       rootAbs: abs,
       maxLines: Number.isInteger(maxLines) && maxLines > 0 ? maxLines : null,
       maxLinesRaw: maxLines,
+      index: indexConfig(root, type, rootRel, own.index),
     });
   }
   return { root, kinds };
+}
+
+const INDEX_NAME = 'index.generated.md';
+const SUMMARY_MODES = ['paragraph', 'sentence', 'none'];
+
+// What <section>.index asks for: { rel, abs, summary, depth }, each key that is left out taking
+// its default; null without the key, which turns the index off; { error } when it is malformed.
+// The defaults are safe to have because the index is rebuilt from the docs, never edited.
+function indexConfig(root, type, rootRel, v) {
+  if (v === undefined || v === null || v === false) return null;
+  const key = `${type.section}.index`;
+  const bad = (msg) => ({ error: `${key} ${msg}` });
+  if (typeof v !== 'object' || Array.isArray(v)) {
+    return bad(`must be an object such as {"path": "${rootRel ? `${rootRel}/` : ''}${INDEX_NAME}", "summary": "paragraph", "depth": 0}`);
+  }
+  const given = v.path === undefined ? `${rootRel ? `${rootRel}/` : ''}${INDEX_NAME}` : v.path;
+  if (typeof given !== 'string' || !given.trim()) return bad(`has a path that is not a file name: ${JSON.stringify(v.path)}`);
+  const abs = path.resolve(root, given.trim().replace(/\\/g, '/'));
+  const p = rel(root, abs);
+  if (!p || p === '..' || p.startsWith('../')) return bad(`has a path outside the repository: ${given}`);
+  // Inside a doc folder the file would be read as part of that doc.
+  const segments = p.split('/');
+  if (segments.slice(0, -1).some((s) => D.TYPES.some((t) => t.dirRe.test(s))) || D.TYPES.some((t) => t.flatRe && t.flatRe.test(segments[segments.length - 1]))) {
+    return bad(`has a path inside a doc folder, or named like a doc: ${p}`);
+  }
+  const summary = v.summary === undefined ? 'paragraph' : v.summary;
+  if (!SUMMARY_MODES.includes(summary)) return bad(`has summary ${JSON.stringify(v.summary)}; it takes "paragraph", "sentence" or "none"`);
+  const depth = v.depth === undefined ? 0 : v.depth;
+  if (!Number.isInteger(depth) || depth < 0) return bad(`has depth ${JSON.stringify(v.depth)}; it takes 0 for summaries only, or how many section levels to list`);
+  return { rel: p, abs, summary, depth };
 }
 
 const kindOf = (cfg, prefix) => cfg.kinds.find((k) => k.type.prefix === prefix) || null;
@@ -259,13 +296,15 @@ const kindOfDoc = (cfg, doc) => kindOf(cfg, doc.prefix);
 // docs' own files, whose bare § references name their own sections. Binaries are listed too, and
 // readText drops them: git's own test would also drop a source file with a NUL in a string.
 // Without git: every file the walk finds, and the scan reads each to find out.
+// The index files are left out: they are generated, and their titles link the docs by path.
 function citingFiles(cfg, docs) {
   const patterns = D.TYPES.flatMap((t) => ['-e', `${t.prefix}[0-9]`]);
   const out = git(cfg.root, ['grep', '-lz', '--untracked', ...patterns], [0, 1]); // 1: no match
-  if (out === null) return repoFiles(cfg.root);
+  const generated = indexFiles(cfg);
+  if (out === null) return repoFiles(cfg.root).filter((p) => !generated.has(p));
   const found = new Set(out.split('\0').filter(Boolean));
   for (const d of docs) for (const name of d.files.keys()) found.add(fileOf(d, name));
-  return [...found].sort();
+  return [...found].filter((p) => !generated.has(p)).sort();
 }
 
 // SDD011, SDD11, or 11 when only one type is configured, as given on the command line, to the
@@ -287,6 +326,105 @@ function select(cfg, docs, args) {
     want.add(id);
   }
   return want;
+}
+
+// ---------------------------------------------------------------- the store index
+
+// The index files to write, one per path: two types that name the same file share it.
+function indexPlan(cfg) {
+  const byPath = new Map();
+  for (const k of cfg.kinds) {
+    if (!k.index || k.index.error) continue;
+    if (!byPath.has(k.index.rel)) byPath.set(k.index.rel, { rel: k.index.rel, abs: k.index.abs, kinds: [] });
+    byPath.get(k.index.rel).kinds.push(k);
+  }
+  return [...byPath.values()];
+}
+
+const indexFiles = (cfg) => new Set(indexPlan(cfg).map((f) => f.rel));
+
+// A link from an index file to a doc: its README.md, or the file itself for a single-file doc.
+// Parentheses are escaped: a folder name may hold them, and the link would end at the first )
+function indexLink(file, doc) {
+  const target = doc.kind === 'folder' ? path.join(doc.abs, D.README) : doc.abs;
+  return posix(path.relative(path.dirname(file.abs), target)).replace(/[()]/g, (c) => (c === '(' ? '%28' : '%29'));
+}
+
+function indexText(file, docs) {
+  const groups = file.kinds.map((k) => ({
+    type: k.type,
+    rootRel: k.rootRel,
+    entries: docs
+      .filter((d) => d.type === k.type)
+      .map((d) => D.indexEntry(d.model, { id: d.id, link: indexLink(file, d), summary: k.index.summary, depth: k.index.depth })),
+  }));
+  return D.renderStoreIndex(groups);
+}
+
+// "20 SDDs", "3 SDDs and 1 KB page".
+function indexCount(file, docs) {
+  return file.kinds
+    .map((k) => {
+      const n = docs.filter((d) => d.type === k.type).length;
+      return `${n} ${n === 1 ? k.type.noun : k.type.plural}`;
+    })
+    .join(' and ');
+}
+
+// Writes the text through a temporary file renamed into place, so an agent reading the index at
+// that moment never sees half of it. Where the rename is refused — Windows, while another program
+// holds the file — the file is written in place.
+function writeWhole(abs, text) {
+  fs.mkdirSync(path.dirname(abs), { recursive: true });
+  const tmp = `${abs}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, text);
+  try {
+    fs.renameSync(tmp, abs);
+  } catch {
+    fs.rmSync(tmp, { force: true });
+    fs.writeFileSync(abs, text);
+  }
+}
+
+// Rewrites each index file whose text no longer matches the docs: [{ rel, count, written }]. A
+// file whose doc roots are all missing is skipped: there is nothing to list yet.
+function writeIndexes(cfg, docs) {
+  const out = [];
+  for (const file of indexPlan(cfg)) {
+    if (!file.kinds.some((k) => fs.existsSync(k.rootAbs))) continue;
+    const text = indexText(file, docs);
+    let old = null;
+    try {
+      old = fs.readFileSync(file.abs, 'utf8');
+    } catch {
+      // Not written yet.
+    }
+    if (old !== text) writeWhole(file.abs, text);
+    out.push({ rel: file.rel, count: indexCount(file, docs), written: old !== text });
+  }
+  return out;
+}
+
+// What check says about the index files: a malformed index key, and a file git would commit. An
+// index is rebuilt from the docs on every machine, so a committed copy conflicts on merges and
+// goes stale wherever no hook rebuilds it.
+function indexIssues(cfg) {
+  const issues = [];
+  for (const k of cfg.kinds) {
+    if (k.index && k.index.error) issues.push({ path: CONFIG_NAME, level: 'error', message: k.index.error, fixable: false });
+  }
+  for (const file of indexPlan(cfg)) {
+    const tracked = git(cfg.root, ['ls-files', '--', file.rel]);
+    if (tracked === null) continue; // no git
+    const at = { path: file.rel, level: 'warning', fixable: false };
+    if (tracked.trim()) {
+      issues.push({ ...at, message: `the index is committed; it is rebuilt from the docs, so untrack it with \`git rm --cached ${file.rel}\` and add it to .gitignore` });
+    } else if (!(git(cfg.root, ['check-ignore', '--no-index', '--', file.rel], [0, 1]) || '').trim()) {
+      // check-ignore prints the path when a rule ignores it, and nothing when none does.
+      issues.push({ ...at, message: `the index is not git-ignored; it is rebuilt from the docs, so add \`${file.rel}\` to .gitignore` });
+    }
+  }
+  return issues;
 }
 
 // ---------------------------------------------------------------- issues
@@ -391,11 +529,18 @@ function report(cfg, issues) {
 
 // ---------------------------------------------------------------- commands
 
+// A check scoped to some docs leaves the index files to the full one.
 function cmdCheck(cfg, args) {
   requireRoots(cfg);
   requireMaxLines(cfg);
   const docs = loadDocs(cfg);
-  return report(cfg, collectIssues(cfg, docs, select(cfg, docs, args), citingFiles(cfg, docs)));
+  const sel = select(cfg, docs, args);
+  return report(cfg, [...collectIssues(cfg, docs, sel, citingFiles(cfg, docs)), ...(sel ? [] : indexIssues(cfg))]);
+}
+
+// After fix or migrate changed docs: the index files they no longer match, rewritten.
+function refreshIndexes(cfg, docs) {
+  for (const r of writeIndexes(cfg, docs)) if (r.written) console.log(`${r.rel}: rewritten.`);
 }
 
 // What fix and checkDoc need to know about a doc.
@@ -444,6 +589,7 @@ function cmdFix(cfg, args, dryRun) {
     return blocked ? 1 : 0;
   }
   const after = loadDocs(cfg);
+  refreshIndexes(cfg, after);
   console.log('');
   return report(cfg, collectIssues(cfg, after, sel, citingFiles(cfg, after)));
 }
@@ -526,8 +672,9 @@ function cmdMigrate(cfg, dryRun) {
     writeDocFiles(dir, files, null, () => eol);
     fs.unlinkSync(doc.abs);
   }
-  console.log('');
   const after = loadDocs(cfg);
+  refreshIndexes(cfg, after);
+  console.log('');
   return report(cfg, collectIssues(cfg, after, null, citingFiles(cfg, after)));
 }
 
@@ -702,6 +849,7 @@ function cmdRefs(cfg, args) {
   const docs = loadDocs(cfg);
   const ids = byId(docs);
   const owned = new Set(docs.flatMap((d) => [...d.files.keys()].map((name) => fileOf(d, name))));
+  for (const p of indexFiles(cfg)) owned.add(p);
   const cited = new Map();
   const entry = (id, prefix, num, anchor, tag) => {
     const key = `${id}${anchor || tag ? `§${anchor || tag}` : ''}`;
@@ -801,6 +949,21 @@ function cmdRefsTo(cfg, args) {
   return 0;
 }
 
+// Rewrites the index files that no longer match the docs, and says which.
+function cmdIndex(cfg) {
+  requireRoots(cfg);
+  const bad = cfg.kinds.find((k) => k.index && k.index.error);
+  if (bad) fail(`${CONFIG_NAME}: ${bad.index.error}`);
+  if (!indexPlan(cfg).length) {
+    const keys = either(cfg.kinds.map((k) => `${k.type.section}.index`));
+    fail(`${CONFIG_NAME} has no ${keys}; the ${either(cfg.kinds.map((k) => k.type.skill))} skill's init sets it`);
+  }
+  const written = writeIndexes(cfg, loadDocs(cfg));
+  if (!written.length) console.log('No index written: no doc root exists yet.');
+  for (const r of written) console.log(`${r.rel}: ${r.count}, ${r.written ? 'rewritten' : 'up to date'}.`);
+  return 0;
+}
+
 // One more than the highest number any doc of the type has had: on disk, or anywhere in git
 // history on any branch, deleted ones included. A number is never reused, because something may
 // still cite it. The type is the one prefix given, or the only one configured.
@@ -857,8 +1020,7 @@ function hook(input) {
   const cursor = input.hook_event_name === 'stop';
   // A turn already sent back once may end, and so may one Cursor reports as aborted.
   if (cursor ? input.loop_count > 0 || ['aborted', 'error'].includes(input.status) : input.stop_hook_active) return 0;
-  const starts = cursor ? [...(input.workspace_roots || []), process.cwd()] : [input.cwd || process.cwd()];
-  const root = starts.map((dir) => findRoot(dir)).find(Boolean);
+  const root = hookRoot(input, cursor);
   if (!root) return 0;
   let cfg;
   try {
@@ -925,23 +1087,52 @@ function hook(input) {
   return 0;
 }
 
+// The repository a hook runs for: from `cwd`, or, in Cursor's own hooks, from workspace_roots.
+function hookRoot(input, cursor) {
+  const starts = cursor ? [...(input.workspace_roots || []), process.cwd()] : [input.cwd || process.cwd()];
+  return starts.map((dir) => findRoot(dir)).find(Boolean) || null;
+}
+
+// The start-of-turn hook. It rewrites the index files that no longer match the docs, so a pull, a
+// checkout, a merge, a rebase or an edit made since the last turn shows in the index the agent is
+// about to read. It runs before every prompt, so it says nothing — Claude Code adds what a hook
+// prints on this event to the agent's context, and other agents may too — and it never blocks the
+// prompt: any failure is swallowed, and it always exits 0.
+//
+// Claude Code and Codex run it on UserPromptSubmit, Copilot CLI on userPromptSubmitted, Gemini CLI
+// on BeforeAgent; all send `cwd`. Cursor's own beforeSubmitPrompt sends workspace_roots and
+// expects {"continue":true} back.
+function indexHook(input) {
+  const cursor = input.hook_event_name === 'beforeSubmitPrompt';
+  try {
+    const root = hookRoot(input, cursor);
+    const cfg = root && loadConfig(root);
+    if (cfg && indexPlan(cfg).length) writeIndexes(cfg, loadDocs(cfg));
+  } catch {
+    // A prompt is never held up by the index.
+  }
+  if (cursor) process.stdout.write(`${JSON.stringify({ continue: true })}\n`);
+  return 0;
+}
+
 // ---------------------------------------------------------------- main
 
-const USAGE = 'usage: doc-check.js <check|fix|migrate|lint|refs|next|hook> [ID ...] [--dry-run]';
+const USAGE = 'usage: doc-check.js <check|fix|migrate|lint|refs|next|index|hook|index-hook> [ID ...] [--dry-run]';
 
 function main(argv = process.argv.slice(2)) {
   const [cmd, ...rest] = argv;
   const dryRun = rest.includes('--dry-run');
   const args = rest.filter((a) => a !== '--dry-run');
-  if (cmd === 'hook') {
+  if (cmd === 'hook' || cmd === 'index-hook') {
     // Without input, readStdin would wait on the terminal forever.
     if (process.stdin.isTTY) {
-      fail('hook reads the Stop hook input as JSON on stdin: the agent runs it; to try it by hand, pipe {"cwd":"<repository>"} into it');
+      const event = cmd === 'hook' ? 'Stop' : 'start-of-turn';
+      fail(`${cmd} reads the ${event} hook input as JSON on stdin: the agent runs it; to try it by hand, pipe {"cwd":"<repository>"} into it`);
     }
-    process.exitCode = hook(readStdin());
+    process.exitCode = cmd === 'hook' ? hook(readStdin()) : indexHook(readStdin());
     return;
   }
-  if (!cmd || !['check', 'fix', 'migrate', 'lint', 'refs', 'next'].includes(cmd)) fail(USAGE);
+  if (!cmd || !['check', 'fix', 'migrate', 'lint', 'refs', 'next', 'index'].includes(cmd)) fail(USAGE);
   const root = findRoot(process.cwd());
   if (!root) fail(`no ${CONFIG_NAME} in this directory or above; the ${either(D.TYPES.map((t) => t.skill))} skill's init creates it`);
   const cfg = loadConfig(root);
@@ -950,9 +1141,10 @@ function main(argv = process.argv.slice(2)) {
   else if (cmd === 'migrate') process.exitCode = cmdMigrate(cfg, dryRun);
   else if (cmd === 'lint') process.exitCode = cmdLint(cfg, args);
   else if (cmd === 'refs') process.exitCode = cmdRefs(cfg, args);
+  else if (cmd === 'index') process.exitCode = cmdIndex(cfg);
   else process.exitCode = cmdNext(cfg, args);
 }
 
 if (require.main === module) runMain(main);
 
-module.exports = { findRoot, loadConfig, loadDocs, citingFiles, changedFiles, hook, main };
+module.exports = { findRoot, loadConfig, loadDocs, citingFiles, changedFiles, writeIndexes, hook, indexHook, main };

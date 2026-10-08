@@ -2,7 +2,7 @@
 name: to-kb
 description: Add research results and facts about the world outside the code — services the product integrates and their rules, laws and policies it must follow, its market and users, know-how the team wants to keep — to the repository’s knowledge base, as KBDOC pages that carry their sources. Use after a task turned up findings the user agreed to keep, or when the user asks to add something to the knowledge base; do not use for how the repository’s code works (to-sdd), for decisions (to-adr), tickets or code comments.
 metadata:
-  prompt-version: "2026-10-04.1"
+  prompt-version: "2026-10-07.1"
 ---
 
 # Add to the knowledge base
@@ -16,7 +16,7 @@ The knowledge base sits beside the SDDs, which hold how the repository's own cod
 1. **Gather what to add.** Take it from the user's request, or from what this conversation found: research results, a service's documented behaviour, a rule an outside party enforces, something the user stated. Hold each fact against `What belongs`.
 2. **Ask the user**, unless they asked for this. List each fact in one line, with its source and the page it would go to: an existing page by its id, or a new one. Write only what they confirm. When nothing qualifies, say so in one line and stop. Do not read the config and do not ask anything else.
 3. **Read the configuration**, running its init if needed. See `Configuration`.
-4. **Find the pages.** List the folders in `paths.kbRoot`. When a folder name is not enough, read the first paragraph of its `README.md`. For each page you will change, read its `README.md` first, the summary and then the index, then the sections you will touch.
+4. **Find the pages.** Read the knowledge-base index, `kb.index.path`: every page with its summary. Without one, list the folders in `paths.kbRoot` and read the first paragraph of each `README.md`. For each page you will change, read its `README.md` first, the summary and then the index, then the sections you will touch.
 5. **Decide where each fact goes:** a correction to a section, a new section in the page whose summary names the topic, or a new page for a topic no page covers. `next KBDOC` gives a new page its id. Keep one page per topic.
 6. **Write it**, following [the format](references/format.md) and `Content`. Read the format before you write.
 7. **Run `fix`, then `check`, then `lint`**, all scoped to the pages you wrote. Repair what `check` still reports. Each `lint` warning is a lead: confirm it, and correct the text where it is wrong.
@@ -49,9 +49,9 @@ A binary — a PDF, a screenshot, a contract — goes in `<kbRoot>/attachments/`
 
 ## Configuration
 
-Read `.skillbox/tickets.json` under the repository root. It supplies `paths.kbRoot` and `kb.maxLines`, and `paths.sddRoot` and `sdd.maxLines` for the SDDs.
+Read `.skillbox/tickets.json` under the repository root. It supplies `paths.kbRoot`, `kb.maxLines` and `kb.index`, and `paths.sddRoot`, `sdd.maxLines` and `sdd.index` for the SDDs.
 
-If the file is missing, or lacks any of those four keys, run the init in [the configuration reference](references/config.md), then carry on. The init writes the missing keys, and in the same run settles the repository's agent instructions, which name both stores. The script has no default limit, so the value in force is always the one in the file.
+If the file is missing, or lacks any of those six keys, run the init in [the configuration reference](references/config.md), then carry on. The init writes the missing keys, and in the same run settles the repository's agent instructions, which name both stores. The script has no default limit, so the value in force is always the one in the file.
 
 A directory the user names in the request wins for this run. When the init is running anyway, that directory is also the answer to its question.
 
@@ -76,13 +76,14 @@ node "${CLAUDE_SKILL_DIR}/scripts/doc-check.js" <command>
 |---|---|
 | `next KBDOC` | Before creating a page: the id it takes |
 | `refs --to KBDOCnnn§x.y` | Before rewriting or removing a section: the SDDs and code that cite it, which may need the same correction |
-| `fix KBDOCnnn …` | After writing. It regenerates the index, breadcrumbs and pointers, sets heading levels, puts sections where they belong, merges back section files that fit, and moves the largest sections out of files over the limit. It rewrites, creates and deletes files, so read a file again before editing it further |
+| `fix KBDOCnnn …` | After writing. It regenerates the index, breadcrumbs and pointers, rewrites the store's index file, sets heading levels, puts sections where they belong, merges back section files that fit, and moves the largest sections out of files over the limit. It rewrites, creates and deletes files, so read a file again before editing it further |
 | `check KBDOCnnn …` | After `fix`. It runs every rule, including references to those pages from anywhere in the repository |
+| `index` | When the knowledge-base index is missing or behind the pages: rewrites it. `fix` and the start-of-turn hook keep it current, so this is seldom needed |
 | `lint KBDOCnnn …` | After `check`. On a knowledge-base page it reports labels in titles, paths in backticks the repository does not have, and links that point at nothing. It does not flag history wording, code samples or outside names: on these pages those are content |
 
 `fix` refuses to touch a page with a structural problem: an anchor defined twice, a section whose parent does not exist, an unnumbered heading at section level, or text under a pointer. Repair those by hand first, then run it again. `check` then lists what fix cannot repair: a summary over 500 characters, a reference to a section that does not exist, a label where a section number belongs, a section over the limit with no subsections to move out.
 
-The Stop hook, where it is set up, runs the same rules at the end of every turn on the docs changed since `HEAD`. When it sends the turn back, do what it says. Without it, step 7 is the only check, so never skip it.
+The Stop hook, where it is set up, runs the same rules at the end of every turn on the docs changed since `HEAD`. When it sends the turn back, do what it says. Without it, step 7 is the only check, so never skip it. The start-of-turn hook, where it is set up, rewrites the index files before every prompt and says nothing.
 
 ## Finish
 
