@@ -2,7 +2,7 @@
 name: to-sdd
 description: Keep the repository’s SDDs — the agent-written memory of how each feature area and each shared mechanism works — true. Corrects the sections a code change made wrong or a task found the code contradicts, adds sections for new architecture, creates an SDD for an area none covers, and keeps each file under the size limit. Writes nothing when the change is below the bar. Use at the end of a task that changed code, that found an SDD statement the code contradicts, or that worked out how an area works and the user agreed to record it; or when asked to create, update or migrate SDDs; do not use for knowledge-base pages, ADRs, tickets or code comments.
 metadata:
-  prompt-version: "2026-10-07.1"
+  prompt-version: "2026-10-10.1"
 ---
 
 # Keep the SDDs true
@@ -149,6 +149,7 @@ node "${CLAUDE_SKILL_DIR}/scripts/doc-check.js" <command>
 | `lint SDDnnn …`                | After `check`. Leads for the `Content` rules, all warnings: wording that tells history, fenced code, names in backticks that the code no longer has, and links that point at nothing                                                                                                                            |
 | `migrate --dry-run`, `migrate` | Single-file SDDs into folders, and references into the full form. See `SDDs in the old format`                                                                                                                                                                                                                  |
 | `index`                        | When the SDD index is missing or behind the docs: rewrites it. `fix` and the start-of-turn hook keep it current, so this is seldom needed                                                                                                                                                                       |
+| `instructions`                 | When `check` warns that the skills' block in `CLAUDE.md` or `AGENTS.md` is out of date, and the user agrees: rewrites it. `--dry-run` shows the change first                                                                                                                                                  |
 
 ### After fix and check
 

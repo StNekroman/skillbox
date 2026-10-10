@@ -24,6 +24,7 @@ Drilling in:
 | ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
 | [`skillbox:fork-at`](plugins/skillbox/README.md#fork-at)                                    | Fork the conversation at a chosen turn; the parent is untouched                     |
 | [`skillbox:fork-tree`](plugins/skillbox/README.md#fork-tree)                                | Show where this session sits among its forks                                        |
+| [`skillbox:update-instructions`](plugins/skillbox/README.md#update-instructions)            | The SDD and knowledge-base block in `CLAUDE.md` and `AGENTS.md` catches up with the plugin |
 | [`skillbox:draft-ticket`](plugins/skillbox/skills/draft-ticket/README.md)                   | Settled research becomes one ticket file per deliverable                            |
 | [`skillbox:to-adr`](plugins/skillbox/skills/to-adr/README.md)                               | A settled architecture decision becomes an ADR; anything less, none                 |
 | [`skillbox:to-sdd`](plugins/skillbox/skills/to-sdd/README.md)                               | The SDDs are made true again after a code change, or when one is found wrong        |

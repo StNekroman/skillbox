@@ -93,6 +93,13 @@ goes in `AGENTS.md` when that is the only file, or when `CLAUDE.md` imports it; 
 that is the only one; in both when both exist side by side; and in a new `AGENTS.md` when there is
 neither.
 
+The block sits between two markers, and the start marker carries its version. When a plugin update
+changes the block, `check` warns about the older copy in each file, and `doc-check.js instructions`
+— `/skillbox:update-instructions` in Claude Code — rewrites what lies between the markers, leaving
+the rest of the file alone. A copy written by a newer plugin is left as it is, so teammates a
+version apart do not undo each other's update. A block from before the markers, bare under
+`## SDDs` or `## SDDs and the knowledge base`, is recognised and replaced the same way.
+
 It does not write ADRs — that is [to-adr](../to-adr/README.md)'s job — but an SDD section links the
 ADR behind a design choice when there is one. Nor does it edit knowledge-base pages: when a change
 touches code that a page links, the report names that page's section and suggests `to-kb`.
@@ -116,6 +123,7 @@ internals and tests are documented in the plugin's
 | `next SDD` | The id a new SDD takes, counting every number in git history, deleted ones included |
 | `migrate [--dry-run]` | Single-file SDDs (`SDDnnn-slug.md`) into folders, links to them into ids, short-form references into the full form |
 | `index` | Rewrites each store's index file, `sdd.index` and `kb.index`, where it no longer matches the docs. `fix` and `migrate` do it too |
+| `instructions [FILE …] [--dry-run]` | Brings the skills' block in `CLAUDE.md`, `.claude/CLAUDE.md` and `AGENTS.md` up to date with the one this copy ships, and adds it to each file named that lacks it. `check` warns while a copy is out of date |
 
 `check` sees a reference however it was written, a section's title included: in a list
 (`SDD006§2.4.1/§12`, `SDD013§4.2 and §5.1`), after a space (`SDD007 §8`), in parentheses after an

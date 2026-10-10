@@ -138,10 +138,13 @@ Look for both, then pick where the block goes:
 
 Then, for each file the block goes in:
 
-- **It has no rules for either store.** Propose adding [the instructions block](instructions-block.md), with `<sddRoot>`, `<kbRoot>`, `<sddIndex>` and `<kbIndex>` filled in: the roots, and the two `index.path` values.
-- **It already has rules in an older form** — the block from before the index, an SDD-only block from before the knowledge base, or SDD rules written another way. Propose replacing them with the block, and show both the lines that go and the lines that come.
+- **It has no rules for either store.** Propose adding [the instructions block](instructions-block.md). `scripts/doc-check.js instructions --dry-run <file>` shows it with the paths filled in; on yes, run it without `--dry-run`.
+- **It already has the block in an older form** — between its markers, or bare under `## SDDs` or `## SDDs and the knowledge base`. `scripts/doc-check.js instructions --dry-run` shows the lines that go and the lines that come; on yes, run it without `--dry-run`.
+- **It has SDD rules written another way.** Propose removing them and adding the block, and show both.
 
 Write only after the user confirms. These files shape every future session in the repository.
+
+The block sits between two markers, and the start marker carries the version of the block. `instructions` rewrites only what lies between them, so the repository's own rules go outside. When the skills ship a newer block, `check` warns about the older copy, and `instructions` brings it up to date. A copy written by a newer plugin is left alone, so teammates a version apart do not undo each other's update.
 
 ## `.skillbox/` and git
 

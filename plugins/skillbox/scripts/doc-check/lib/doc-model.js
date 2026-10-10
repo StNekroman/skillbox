@@ -1435,6 +1435,100 @@ function rewriteDocLinks(line, idForFile) {
   return { line: out, count };
 }
 
+// ---------------------------------------------------------------- the agent block
+
+// The rules the skills keep in a repository's always-loaded agent instructions, CLAUDE.md or
+// AGENTS.md. The block sits between two markers, so rewriting it never touches the lines around
+// it, and the start marker carries the version of the template it was written from, so a copy
+// older than the template can be told from a newer one. A block written before the markers stands
+// bare under one of the old headings, and runs to the next heading of its level or higher.
+const BLOCK_START = '<!-- skillbox:begin';
+const BLOCK_END = '<!-- skillbox:end -->';
+const OLD_BLOCK_HEADINGS = ['## SDDs and the knowledge base', '## SDDs'];
+const BLOCK_VERSION_RE = /block-version:\s*(\d{4}-\d{2}-\d{2}\.\d+)/;
+const MARKER_VERSION_RE = /^<!-- skillbox:begin v(\d{4}-\d{2}-\d{2}\.\d+)/;
+
+// The template's block-version, from the comment at its top. null without one.
+function blockVersion(template) {
+  const m = BLOCK_VERSION_RE.exec(template);
+  return m ? m[1] : null;
+}
+
+// Below zero when version a is older than b: 2026-10-09.2 is older than 2026-10-10.1.
+function compareVersions(a, b) {
+  const pa = a.split(/[-.]/).map(Number);
+  const pb = b.split(/[-.]/).map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) - (pb[i] || 0);
+  }
+  return 0;
+}
+
+// The block as a repository holds it, as lines: the template's text without the comment at its
+// top, each <name> that values has filled in, between the markers.
+function renderAgentBlock(template, values) {
+  let { lines } = splitLines(template);
+  if (lines.length && lines[0].trimStart().startsWith('<!--')) lines = lines.slice(lines.findIndex((l) => l.includes('-->')) + 1);
+  while (lines.length && isBlank(lines[0])) lines.shift();
+  while (lines.length && isBlank(lines[lines.length - 1])) lines.pop();
+  const filled = lines.map((l) => l.replace(/<([A-Za-z]+)>/g, (whole, name) => (Object.hasOwn(values, name) ? values[name] : whole)));
+  const start =
+    `${BLOCK_START} v${blockVersion(template)}. The to-sdd and to-kb skills keep this block: their ` +
+    'doc-check.js instructions rewrites it down to skillbox:end, so keep your own rules outside it. -->';
+  return [start, ...filled, BLOCK_END];
+}
+
+// Where the block stands in a file's lines: { start, end, old, version }, end exclusive. old marks
+// a block from before the markers, which has no version; end is null when the start marker has no
+// end marker after it. null when the file holds no block.
+function findAgentBlock(lines) {
+  const start = lines.findIndex((l) => l.trimStart().startsWith(BLOCK_START));
+  if (start !== -1) {
+    const end = lines.findIndex((l, i) => i > start && l.trim() === BLOCK_END);
+    const m = MARKER_VERSION_RE.exec(lines[start].trim());
+    return { start, end: end === -1 ? null : end + 1, old: false, version: m ? m[1] : null };
+  }
+  const head = lines.findIndex((l) => OLD_BLOCK_HEADINGS.includes(l.trimEnd()));
+  if (head === -1) return null;
+  let end = lines.findIndex((l, i) => i > head && /^#{1,2}\s/.test(l));
+  if (end === -1) end = lines.length;
+  while (end > head && isBlank(lines[end - 1])) end--;
+  return { start: head, end, old: true, version: null };
+}
+
+// The file's lines with the block in place: instead of the one found, or after everything else
+// with a blank line between.
+function placeAgentBlock(lines, found, block) {
+  if (found) return [...lines.slice(0, found.start), ...block, ...lines.slice(found.end)];
+  const before = [...lines];
+  while (before.length && isBlank(before[before.length - 1])) before.pop();
+  return before.length ? [...before, '', ...block] : [...block];
+}
+
+// The edit that turns lines a into lines b, by their longest common subsequence: [{ op, line }],
+// op '-' for a line that goes, '+' for one that comes, ' ' for one both keep. Meant for blocks of
+// a few dozen lines.
+function lineDiff(a, b) {
+  const lcs = Array.from({ length: a.length + 1 }, () => new Array(b.length + 1).fill(0));
+  for (let i = a.length - 1; i >= 0; i--) {
+    for (let j = b.length - 1; j >= 0; j--) lcs[i][j] = a[i] === b[j] ? lcs[i + 1][j + 1] + 1 : Math.max(lcs[i + 1][j], lcs[i][j + 1]);
+  }
+  const out = [];
+  let i = 0;
+  let j = 0;
+  while (i < a.length || j < b.length) {
+    if (i < a.length && j < b.length && a[i] === b[j]) {
+      out.push({ op: ' ', line: a[i++] });
+      j++;
+    } else if (i < a.length && (j === b.length || lcs[i + 1][j] >= lcs[i][j + 1])) {
+      out.push({ op: '-', line: a[i++] });
+    } else {
+      out.push({ op: '+', line: b[j++] });
+    }
+  }
+  return out;
+}
+
 module.exports = {
   README,
   SUMMARY_MAX,
@@ -1475,4 +1569,11 @@ module.exports = {
   validateRef,
   expandRefs,
   rewriteDocLinks,
+  BLOCK_END,
+  blockVersion,
+  compareVersions,
+  renderAgentBlock,
+  findAgentBlock,
+  placeAgentBlock,
+  lineDiff,
 };

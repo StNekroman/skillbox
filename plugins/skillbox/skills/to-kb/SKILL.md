@@ -2,7 +2,7 @@
 name: to-kb
 description: Add research results and facts about the world outside the code — services the product integrates and their rules, laws and policies it must follow, its market and users, know-how the team wants to keep — to the repository’s knowledge base, as KBDOC pages that carry their sources. Use after a task turned up findings the user agreed to keep, or when the user asks to add something to the knowledge base; do not use for how the repository’s code works (to-sdd), for decisions (to-adr), tickets or code comments.
 metadata:
-  prompt-version: "2026-10-07.1"
+  prompt-version: "2026-10-10.1"
 ---
 
 # Add to the knowledge base
@@ -13,8 +13,8 @@ The knowledge base sits beside the SDDs, which hold how the repository's own cod
 
 ## Order of work
 
-1. **Gather what to add.** Take it from the user's request, or from what this conversation found: research results, a service's documented behaviour, a rule an outside party enforces, something the user stated. Hold each fact against `What belongs`.
-2. **Ask the user**, unless they asked for this. List each fact in one line, with its source and the page it would go to: an existing page by its id, or a new one. Write only what they confirm. When nothing qualifies, say so in one line and stop. Do not read the config and do not ask anything else.
+1. **Gather what to add.** Take it from the user's request, or from what this conversation found: research results, behaviour observed that the docs leave out or contradict, a rule an outside party enforces on us, something the user stated. Hold each fact against `What belongs`.
+2. **Ask the user**, unless they asked for this. List each fact in one line, with its source and the page it would go to: an existing page by its id, or a new one. Write only what they confirm. When nothing qualifies, say so in one line and stop. Do not read the config and do not ask anything else. What the user declined is not proposed again in this conversation.
 3. **Read the configuration**, running its init if needed. See `Configuration`.
 4. **Find the pages.** Read the knowledge-base index, `kb.index.path`: every page with its summary. Without one, list the folders in `paths.kbRoot` and read the first paragraph of each `README.md`. For each page you will change, read its `README.md` first, the summary and then the index, then the sections you will touch.
 5. **Decide where each fact goes:** a correction to a section, a new section in the page whose summary names the topic, or a new page for a topic no page covers. `next KBDOC` gives a new page its id. Keep one page per topic.
@@ -27,8 +27,10 @@ The knowledge base sits beside the SDDs, which hold how the repository's own cod
 A fact belongs when all three hold:
 
 - **It is about the world outside the code, or about where our product meets it:** what a service does, what a rule requires, what research found, how our feed falls short of a marketplace's rules. How our own code works belongs in an SDD. A decision the team made, with the options weighed, belongs in an ADR.
-- **Someone will need it again, and it is not one search away.** A fact the next agent would otherwise rediscover, or get wrong, is worth a line. Trivia is not.
+- **The next agent could not quickly look it up, or already know it.** It qualifies when it was observed and the docs leave it out or say otherwise, when a person or an outside party told us, or when it is research that took real work to put together: findings drawn from many sources, or a rule read as it applies to us. What a service's own docs state stays there, however useful: an SDD that relies on it links the docs. What any agent already knows is trivia here. When in doubt, leave it out.
 - **It has a source.** See `Sources`.
+
+These decide what you propose. A fact the user names is theirs to decide: add it, with its source.
 
 A page may mention our code and link to it. Write such a link as a relative markdown link, or as a path from the repository root in backticks: `to-sdd` reports every knowledge-base section that links a file when that file changes, so the page is looked at again when the code under it moves.
 
@@ -80,6 +82,7 @@ node "${CLAUDE_SKILL_DIR}/scripts/doc-check.js" <command>
 | `check KBDOCnnn …` | After `fix`. It runs every rule, including references to those pages from anywhere in the repository |
 | `index` | When the knowledge-base index is missing or behind the pages: rewrites it. `fix` and the start-of-turn hook keep it current, so this is seldom needed |
 | `lint KBDOCnnn …` | After `check`. On a knowledge-base page it reports labels in titles, paths in backticks the repository does not have, and links that point at nothing. It does not flag history wording, code samples or outside names: on these pages those are content |
+| `instructions` | When `check` warns that the skills' block in `CLAUDE.md` or `AGENTS.md` is out of date, and the user agrees: rewrites it. `--dry-run` shows the change first |
 
 `fix` refuses to touch a page with a structural problem: an anchor defined twice, a section whose parent does not exist, an unnumbered heading at section level, or text under a pointer. Repair those by hand first, then run it again. `check` then lists what fix cannot repair: a summary over 500 characters, a reference to a section that does not exist, a label where a section number belongs, a section over the limit with no subsections to move out.
 

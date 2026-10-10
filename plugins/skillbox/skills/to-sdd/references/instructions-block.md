@@ -1,8 +1,11 @@
-<!-- The block to-sdd and to-kb propose for a repository's always-loaded agent instructions:
-CLAUDE.md, AGENTS.md, or both. Replace <sddRoot> with paths.sddRoot, <kbRoot> with paths.kbRoot,
-<sddIndex> with sdd.index.path and <kbIndex> with kb.index.path, drop this comment, and write
-everything below it. The examples use letters, not digits, so the reference checker never mistakes
-them for real references. -->
+<!-- block-version: 2026-10-10.1. Bump it with every change to the block below: a repository whose
+copy is older is then told to update it, and one whose copy is newer is left alone.
+
+The block to-sdd and to-kb keep in a repository's always-loaded agent instructions: CLAUDE.md,
+AGENTS.md, or both. `doc-check.js instructions` writes it there between two markers, without this
+comment, filling in <sddRoot> and <kbRoot> from paths.sddRoot and paths.kbRoot, and <sddIndex> and
+<kbIndex> from sdd.index.path and kb.index.path. The examples use letters, not digits, so the
+reference checker never mistakes them for real references. -->
 
 ## SDDs and the knowledge base
 
@@ -33,9 +36,14 @@ This repository keeps two stores of docs written by agents for agents, one folde
 - **When you had to work out how an area works, and no SDD holds what you found, ask the user
   when the task is done whether to record it; on yes, invoke `to-sdd`.** What you found may be a
   flow, a rule or a gotcha. Ask about what you worked out, not about every file no SDD covers.
-- **When a task turned up research or facts about the outside world worth keeping, ask the user
-  whether to add them to the knowledge base; on yes, invoke the `to-kb` skill.** The user may also
-  ask for it directly.
+- **When a task found out something about the outside world that the next agent could not quickly
+  look up or already know, ask the user once, when the task is done, whether to add it to the
+  knowledge base; on yes, invoke the `to-kb` skill.** It qualifies when you observed it and the
+  docs leave it out or say otherwise, when a person or an outside party told us, or when it is
+  research that took real work to put together. What a service's own docs state, what any agent
+  already knows, and what you recall without a source checked in this session do not. When in
+  doubt, do not ask. A no holds for the rest of the conversation. The user may also ask for it
+  directly.
 - **Edit SDDs only through `to-sdd`, and knowledge-base pages only through `to-kb`.**
 - **Cite a section in the full form, every time:** `SDDnnn§a.b, SDDnnn§c`, never `SDDnnn§a.b/§c`,
   and never by a file path.

@@ -1090,3 +1090,29 @@ describe('the store index', () => {
     assert.match(two, /\n## Knowledge-base index\n\nNo KB pages yet\.\n$/);
   });
 });
+
+describe('the agent block', () => {
+  test('compareVersions orders by date, then by the number after it', () => {
+    assert.ok(D.compareVersions('2026-10-09.2', '2026-10-10.1') < 0);
+    assert.ok(D.compareVersions('2026-10-10.10', '2026-10-10.9') > 0);
+    assert.equal(D.compareVersions('2026-10-10.1', '2026-10-10.1'), 0);
+  });
+
+  test('lineDiff puts what goes before what comes, and keeps what both share', () => {
+    const ops = D.lineDiff(['a', 'b', 'c'], ['a', 'x', 'c', 'd']).map(({ op, line }) => `${op}${line}`);
+    assert.deepEqual(ops, [' a', '-b', '+x', ' c', '+d']);
+  });
+
+  test('findAgentBlock: an old heading runs to the next heading of its level or higher, trailing blanks left out', () => {
+    assert.deepEqual(D.findAgentBlock(['x', '## SDDs', '', '- r', '### Sub', '- s', '', '# Next']), { start: 1, end: 6, old: true, version: null });
+    assert.equal(D.findAgentBlock(['# Project', '## SDD notes']), null);
+  });
+
+  test('placeAgentBlock: in place of the block found, or after the rest with one blank line between', () => {
+    const block = ['<!-- skillbox:begin v2026-10-10.1. x -->', 'B', D.BLOCK_END];
+    const lines = ['top', '', '## SDDs', 'old', '## Next'];
+    assert.deepEqual(D.placeAgentBlock(lines, D.findAgentBlock(lines), block), ['top', '', ...block, '## Next']);
+    assert.deepEqual(D.placeAgentBlock(['top', '', ''], null, block), ['top', '', ...block]);
+    assert.deepEqual(D.findAgentBlock(block), { start: 0, end: 3, old: false, version: '2026-10-10.1' });
+  });
+});

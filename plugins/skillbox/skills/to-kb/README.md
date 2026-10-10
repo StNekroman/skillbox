@@ -41,7 +41,10 @@ the repository does not have, and links that point at nothing.
 ## When it fires
 
 When you ask for something to be added to the knowledge base, or when an agent finishes a task that
-turned up research or outside facts worth keeping and you agree to keep them. The second needs the
+found out something about the outside world the next agent could not quickly look up or already
+know, and you agree to keep it: behaviour the docs leave out or contradict, what someone told you,
+research that took real work. What a service's own docs state plainly is never proposed, and the
+agent asks once per task. The second needs the
 repository's agent instructions to say so: on first use the skill runs the shared init, which sets
 up both stores and proposes one block for `CLAUDE.md` or `AGENTS.md` covering SDDs and the knowledge
 base. It writes that block only once you confirm. The init and the block are the same in `to-sdd`.

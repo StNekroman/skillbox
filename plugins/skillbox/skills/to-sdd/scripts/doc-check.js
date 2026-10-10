@@ -21,11 +21,13 @@
 //   next [PREFIX]               the id a new doc takes
 //   index                       rewrite each store's index file, <section>.index in the config,
 //                               where it no longer matches the docs
-//   hook                        the Stop hook: reads the hook input on stdin, checks the docs
+//   instructions [FILE ...]     bring the skills' block in CLAUDE.md, .claude/CLAUDE.md and
+//                               AGENTS.md up to date; add it to each FILE named that lacks it
+//   hook                       the Stop hook: reads the hook input on stdin, checks the docs
 //                               changed since HEAD, prints a reply that sends the problems back
 //   index-hook                  the start-of-turn hook: reads the hook input on stdin, rewrites
 //                               the index files that no longer match the docs, says nothing
-//   --dry-run (fix, migrate) prints what would change and writes nothing.
+//   --dry-run (fix, migrate, instructions) prints what would change and writes nothing.
 
 const fs = require('fs');
 const path = require('path');
@@ -535,7 +537,7 @@ function cmdCheck(cfg, args) {
   requireMaxLines(cfg);
   const docs = loadDocs(cfg);
   const sel = select(cfg, docs, args);
-  return report(cfg, [...collectIssues(cfg, docs, sel, citingFiles(cfg, docs)), ...(sel ? [] : indexIssues(cfg))]);
+  return report(cfg, [...collectIssues(cfg, docs, sel, citingFiles(cfg, docs)), ...(sel ? [] : indexIssues(cfg)), ...instructionIssues(cfg)]);
 }
 
 // After fix or migrate changed docs: the index files they no longer match, rewritten.
@@ -995,6 +997,159 @@ function cmdNext(cfg, args) {
   return 0;
 }
 
+// ---------------------------------------------------------------- agent instructions
+
+// The files agents load at the start of every session: Claude Code's, then most others'.
+const AGENT_FILES = ['CLAUDE.md', '.claude/CLAUDE.md', 'AGENTS.md'];
+const BLOCK_TEMPLATE = 'instructions-block.md';
+
+// The block's template as this copy of the script ships it: references/ sits beside the script in
+// the source, and beside its scripts/ folder in a skill. null when neither has it.
+function blockTemplate() {
+  for (const dir of [path.join(__dirname, 'references'), path.join(__dirname, '..', 'references')]) {
+    try {
+      return fs.readFileSync(path.join(dir, BLOCK_TEMPLATE), 'utf8');
+    } catch {
+      // Not in this layout.
+    }
+  }
+  return null;
+}
+
+// The block as this repository should hold it, filled in from the config: { block, version }, or
+// { missing } naming the config keys it lacks, or { error } when the template is not there.
+function agentBlock(cfg) {
+  const template = blockTemplate();
+  if (!template) return { error: `no references/${BLOCK_TEMPLATE} beside this script; run the copy inside the to-sdd or to-kb skill` };
+  const values = {};
+  const missing = [];
+  for (const type of D.TYPES) {
+    const k = kindOf(cfg, type.prefix);
+    if (k) values[`${type.section}Root`] = k.rootRel || '.';
+    else missing.push(`paths.${type.rootKey}`);
+    if (k && k.index && !k.index.error) values[`${type.section}Index`] = k.index.rel;
+    else missing.push(`${type.section}.index`);
+  }
+  if (missing.length) return { missing };
+  return { block: D.renderAgentBlock(template, values), version: D.blockVersion(template) };
+}
+
+// The agent instructions files to look at, each once: those of AGENT_FILES that exist, then the
+// ones named. A CLAUDE.md that is a symlink to AGENTS.md is one file, written through its target.
+function agentFiles(cfg, named = []) {
+  const out = new Map();
+  const add = (abs, isNamed) => {
+    const real = realpath(abs);
+    if (out.has(real)) out.get(real).named ||= isNamed;
+    else out.set(real, { rel: rel(cfg.root, abs), real, named: isNamed });
+  };
+  for (const name of AGENT_FILES) if (fs.existsSync(path.join(cfg.root, name))) add(path.join(cfg.root, name), false);
+  for (const abs of named) add(abs, true);
+  return [...out.values()];
+}
+
+// What a file holds of the block: its lines, the block found, and whether that copy is the one
+// given or newer than it.
+function blockState(file, { block, version }) {
+  const text = readText(file.real);
+  const { lines, eol, final } = D.splitLines(text || '');
+  const found = D.findAgentBlock(lines);
+  const held = found && found.end !== null ? lines.slice(found.start, found.end) : null;
+  return {
+    exists: text !== null,
+    lines,
+    eol,
+    final,
+    found,
+    current: Boolean(held && held.length === block.length && held.every((l, i) => l === block[i])),
+    newer: Boolean(found && found.version && version && D.compareVersions(found.version, version) > 0),
+  };
+}
+
+// What check says about the block in the agent instructions: a copy that differs from the one this
+// script writes, a copy from a newer plugin, a start marker with no end. A file that holds no block
+// is not reported: the user may have declined it.
+function instructionIssues(cfg) {
+  const want = agentBlock(cfg);
+  if (!want.block) return [];
+  const issues = [];
+  for (const f of agentFiles(cfg)) {
+    const s = blockState(f, want);
+    if (!s.found || s.current) continue;
+    const at = { path: f.rel, line: s.found.start + 1, level: 'warning' };
+    if (s.found.end === null) {
+      issues.push({ ...at, message: `the skills' agent block has no end marker, ${D.BLOCK_END}; add it by hand where the block ends` });
+    } else if (s.newer) {
+      issues.push({ ...at, message: `the skills' agent block is v${s.found.version}, newer than this plugin's v${want.version}; update the plugin` });
+    } else {
+      const what = s.found.version ? `v${s.found.version}` : 'from before the markers';
+      issues.push({
+        ...at,
+        message: `the skills' agent block is ${what}, not this plugin's v${want.version}; it shapes every session, so ask the user, and on yes run: node "${scriptPath()}" instructions`,
+      });
+    }
+  }
+  return issues;
+}
+
+// The lines a change removes and adds, with … where unchanged lines are left out.
+function printDiff(before, after) {
+  let shown = false;
+  let gap = false;
+  for (const { op, line } of D.lineDiff(before, after)) {
+    if (op === ' ') {
+      gap = shown;
+      continue;
+    }
+    if (gap) console.log('  …');
+    gap = false;
+    shown = true;
+    console.log(`  ${op} ${line}`.trimEnd());
+  }
+}
+
+// Brings the skills' block in the agent instructions up to date: rewrites it in each file that
+// holds another copy, and adds it to each file named that holds none. A copy written by a newer
+// plugin is left alone, so teammates a version apart do not undo each other's update.
+function cmdInstructions(cfg, args, dryRun) {
+  const bad = cfg.kinds.find((k) => k.index && k.index.error);
+  if (bad) fail(`${CONFIG_NAME}: ${bad.index.error}`);
+  const want = agentBlock(cfg);
+  if (want.error) fail(want.error);
+  if (want.missing) fail(`${CONFIG_NAME} has no ${want.missing.join(', ')}; the ${either(D.TYPES.map((t) => t.skill))} skill's init sets them`);
+  const named = args.map((a) => {
+    const p = rel(cfg.root, path.resolve(a));
+    if (!p || p === '..' || p.startsWith('../') || path.isAbsolute(p)) fail(`${a} is not a file inside the repository, ${posix(cfg.root)}`);
+    return path.join(cfg.root, p);
+  });
+  let status = 0;
+  let any = false;
+  for (const f of agentFiles(cfg, named)) {
+    const s = blockState(f, want);
+    if (!s.found && !f.named) continue;
+    any = true;
+    if (s.found && s.found.end === null) {
+      console.log(`${f.rel}: the block has no end marker, ${D.BLOCK_END}. Add it by hand where the block ends, then run this again.`);
+      status = 1;
+    } else if (s.newer) {
+      console.log(`${f.rel}: v${s.found.version}, newer than this plugin's v${want.version}; left as it is. Update the plugin.`);
+    } else if (s.current) {
+      console.log(`${f.rel}: up to date, v${want.version}.`);
+    } else {
+      const before = s.found ? s.lines.slice(s.found.start, s.found.end) : [];
+      const verb = s.found ? (dryRun ? 'would be rewritten' : 'rewritten') : dryRun ? 'would get the block' : 'block added';
+      console.log(`${f.rel}: ${verb}, v${want.version}${dryRun ? ':' : '.'}`);
+      if (dryRun) printDiff(before, want.block);
+      else writeWhole(f.real, D.joinLines(D.placeAgentBlock(s.lines, s.found, want.block), s.eol, s.exists ? s.final : true));
+    }
+  }
+  if (!any) {
+    console.log(`No file holds the block: ${AGENT_FILES.join(', ')}. To add it, name the file: node "${scriptPath()}" instructions AGENTS.md`);
+  }
+  if (dryRun) console.log('Dry run: nothing written.');
+  return status;
+}
+
 // ---------------------------------------------------------------- hook
 
 function readStdin() {
@@ -1117,7 +1272,7 @@ function indexHook(input) {
 
 // ---------------------------------------------------------------- main
 
-const USAGE = 'usage: doc-check.js <check|fix|migrate|lint|refs|next|index|hook|index-hook> [ID ...] [--dry-run]';
+const USAGE = 'usage: doc-check.js <check|fix|migrate|lint|refs|next|index|instructions|hook|index-hook> [ID ...] [--dry-run]';
 
 function main(argv = process.argv.slice(2)) {
   const [cmd, ...rest] = argv;
@@ -1132,7 +1287,7 @@ function main(argv = process.argv.slice(2)) {
     process.exitCode = cmd === 'hook' ? hook(readStdin()) : indexHook(readStdin());
     return;
   }
-  if (!cmd || !['check', 'fix', 'migrate', 'lint', 'refs', 'next', 'index'].includes(cmd)) fail(USAGE);
+  if (!cmd || !['check', 'fix', 'migrate', 'lint', 'refs', 'next', 'index', 'instructions'].includes(cmd)) fail(USAGE);
   const root = findRoot(process.cwd());
   if (!root) fail(`no ${CONFIG_NAME} in this directory or above; the ${either(D.TYPES.map((t) => t.skill))} skill's init creates it`);
   const cfg = loadConfig(root);
@@ -1142,6 +1297,7 @@ function main(argv = process.argv.slice(2)) {
   else if (cmd === 'lint') process.exitCode = cmdLint(cfg, args);
   else if (cmd === 'refs') process.exitCode = cmdRefs(cfg, args);
   else if (cmd === 'index') process.exitCode = cmdIndex(cfg);
+  else if (cmd === 'instructions') process.exitCode = cmdInstructions(cfg, args, dryRun);
   else process.exitCode = cmdNext(cfg, args);
 }
 

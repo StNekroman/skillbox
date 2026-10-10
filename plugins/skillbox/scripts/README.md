@@ -17,7 +17,7 @@ copy through `${CLAUDE_SKILL_DIR}`; `../hooks/hooks.json` runs the source throug
 | `fork-at.js` | Resolves a cut point and opens a window at once; in that window, creates the child with one headless turn and resumes it |
 | `fork-tree.js` | Renders the fork tree; interactive picker when run from a TTY |
 | `lib/fork-graph.js` | Shared: transcript reading, edge collection, session metadata, terminal launching |
-| `doc-check/doc-check.js` | Doc checks and repairs, for SDDs and knowledge-base pages — `check`, `fix`, `migrate`, `lint`, `refs`, `next`, `index` — the Stop hook, `hook`, and the start-of-turn hook, `index-hook`. Disk and git work only |
+| `doc-check/doc-check.js` | Doc checks and repairs, for SDDs and knowledge-base pages — `check`, `fix`, `migrate`, `lint`, `refs`, `next`, `index` — the skills' block in the agent instructions, `instructions`, the Stop hook, `hook`, and the start-of-turn hook, `index-hook`. Disk and git work only |
 | `doc-check/lib/doc-model.js` | The doc model, pure: the doc types, parsing a doc, the rules, the mechanical repairs, finding references and links, the content leads, the store index's text |
 | `doc-check/references/` | What `to-sdd` and `to-kb` share word for word: the format, the configuration and its init, the agent-instructions block |
 | `test/` | Unit and end-to-end tests for all of the above, run with Node's built-in runner |
@@ -237,6 +237,16 @@ links would read as citations by path, and `check` warns about one git would com
 `beforeSubmitPrompt`, `workspace_roots` — prints nothing, so it adds nothing to the agent's
 context, swallows every failure and exits 0. Cursor's own event gets `{"continue":true}`. Claude
 Code runs it in the background (`async`), so the prompt does not wait for it at all.
+
+**The agent block is a versioned copy.** `instructions` renders `references/instructions-block.md`
+with the config's paths and writes it between `<!-- skillbox:begin v… -->` and
+`<!-- skillbox:end -->` in `CLAUDE.md`, `.claude/CLAUDE.md` and `AGENTS.md`, touching nothing
+outside them. The version is the template's `block-version`, bumped by hand with every change to
+the block. A copy is rewritten when it differs and is not newer; a newer one is left alone, so
+teammates whose plugins are a version apart do not flip the file back and forth. A block from
+before the markers is found by its old heading and runs to the next heading of its level. `check`
+warns about each copy that differs, never about a file without one, and the hooks never write it:
+the file shapes every session, so it changes only when someone runs the command.
 
 ## Environment
 

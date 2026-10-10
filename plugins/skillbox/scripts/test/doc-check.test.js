@@ -1031,3 +1031,159 @@ describe('the store index', () => {
     });
   });
 });
+
+test("the plugin's update-instructions command runs this script's instructions", () => {
+  const plugin = path.join(__dirname, '..', '..');
+  const md = fs.readFileSync(path.join(plugin, 'commands', 'update-instructions.md'), 'utf8');
+  const script = /node "\$\{CLAUDE_PLUGIN_ROOT\}\/(.+?)" instructions \$ARGUMENTS/.exec(md);
+  assert.ok(script, md);
+  assert.equal(path.resolve(plugin, script[1]), SCRIPT);
+});
+
+describe('instructions', () => {
+  const BOTH = { version: 1, paths: { sddRoot: 'docs/sdd', kbRoot: 'docs/kb' }, sdd: { maxLines: 40, index: {} }, kb: { maxLines: 40, index: {} } };
+  const TEMPLATE = fs.readFileSync(path.join(__dirname, '..', 'doc-check', 'references', 'instructions-block.md'), 'utf8');
+  const VERSION = D.blockVersion(TEMPLATE);
+  const BLOCK = D.renderAgentBlock(TEMPLATE, {
+    sddRoot: 'docs/sdd',
+    kbRoot: 'docs/kb',
+    sddIndex: 'docs/sdd/index.generated.md',
+    kbIndex: 'docs/kb/index.generated.md',
+  });
+  const END = BLOCK[BLOCK.length - 1];
+  const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // The start marker of a copy at another version.
+  const startAt = (version) => BLOCK[0].replace(`v${VERSION}`, `v${version}`);
+  const setup = (t, files = {}) => repo(t, files, { config: BOTH, useGit: false });
+  const blockWarnings = (stdout) => stdout.split('\n').filter((l) => l.includes("the skills' agent block"));
+
+  test('the template carries a block-version, and the block it renders fills in every path from the config', () => {
+    assert.match(VERSION, /^\d{4}-\d{2}-\d{2}\.\d+$/);
+    assert.match(BLOCK[0], new RegExp(`^<!-- skillbox:begin v${esc(VERSION)}\\. .* -->$`));
+    assert.equal(BLOCK[1], '## SDDs and the knowledge base');
+    assert.equal(END, '<!-- skillbox:end -->');
+    const all = BLOCK.join('\n');
+    assert.doesNotMatch(all, /<(?:sddRoot|kbRoot|sddIndex|kbIndex)>|block-version/);
+    assert.match(all, /`docs\/sdd\/SDDnnn-<slug>\/`/);
+    assert.match(all, /`docs\/kb\/index\.generated\.md`/);
+  });
+
+  test('with no file holding the block it says so and writes nothing; a file named gets the block', (t) => {
+    const root = setup(t);
+    let r = run(root, ['instructions']);
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /^No file holds the block: CLAUDE\.md, \.claude\/CLAUDE\.md, AGENTS\.md\. To add it, name the file: node ".+" instructions AGENTS\.md\n$/);
+    assert.equal(fs.existsSync(path.join(root, 'AGENTS.md')), false);
+    r = run(root, ['instructions', 'AGENTS.md']);
+    assert.equal(r.stdout, `AGENTS.md: block added, v${VERSION}.\n`);
+    assert.equal(read(root, 'AGENTS.md'), text(BLOCK));
+    assert.equal(run(root, ['instructions']).stdout, `AGENTS.md: up to date, v${VERSION}.\n`);
+    assert.deepEqual(blockWarnings(run(root, ['check']).stdout), []);
+  });
+
+  test('an older copy: check warns, a dry run shows the change, and the run rewrites the block alone', (t) => {
+    const before = ['# Project', '', 'Our own rule.', '', startAt('2026-01-01.1'), '## SDDs and the knowledge base', '', '- An old rule.', END, '', '## Build', '', 'npm test'];
+    const root = setup(t, { 'CLAUDE.md': before });
+    const c = run(root, ['check']);
+    assert.equal(c.status, 0, c.stdout);
+    const warned = blockWarnings(c.stdout);
+    assert.equal(warned.length, 1, c.stdout);
+    assert.match(
+      warned[0],
+      new RegExp(
+        `^CLAUDE\\.md:5: warning: the skills' agent block is v2026-01-01\\.1, not this plugin's v${esc(VERSION)}; it shapes every session, so ask the user, and on yes run: node ".+doc-check\\.js" instructions$`,
+      ),
+    );
+
+    const dry = run(root, ['instructions', '--dry-run']);
+    assert.equal(dry.status, 0, dry.stderr);
+    assert.match(dry.stdout, new RegExp(`^CLAUDE\\.md: would be rewritten, v${esc(VERSION)}:\\n {2}- <!-- skillbox:begin v2026-01-01\\.1`));
+    assert.match(dry.stdout, /^ {2}- - An old rule\.$/m);
+    assert.match(dry.stdout, /^ {2}\+ This repository keeps two stores/m);
+    assert.match(dry.stdout, /\nDry run: nothing written\.\n$/);
+    assert.equal(read(root, 'CLAUDE.md'), text(before));
+
+    assert.equal(run(root, ['instructions']).stdout, `CLAUDE.md: rewritten, v${VERSION}.\n`);
+    assert.equal(read(root, 'CLAUDE.md'), text(['# Project', '', 'Our own rule.', '', ...BLOCK, '', '## Build', '', 'npm test']));
+    assert.deepEqual(blockWarnings(run(root, ['check']).stdout), []);
+  });
+
+  test('a copy of this version edited by hand is rewritten too, and a scoped check warns about it', (t) => {
+    const edited = BLOCK.map((l) => l.replace('Before you change code', 'Before you touch code'));
+    assert.notDeepEqual(edited, BLOCK);
+    const root = setup(t, { 'AGENTS.md': edited, ...folderDoc('docs/sdd/SDD001-mail', readme('SDD001', 'Mail', section('1', 'Overview'))) });
+    const c = run(root, ['check', 'SDD001']);
+    assert.match(blockWarnings(c.stdout).join('\n'), new RegExp(`^AGENTS\\.md:1: warning: the skills' agent block is v${esc(VERSION)}, not this plugin's`), c.stdout);
+    assert.equal(run(root, ['instructions']).stdout, `AGENTS.md: rewritten, v${VERSION}.\n`);
+    assert.equal(read(root, 'AGENTS.md'), text(BLOCK));
+  });
+
+  test('a block from before the markers is found by its old heading and replaced up to the next heading; CRLF is kept', (t) => {
+    const crlf = (lines) => `${lines.join('\r\n')}\r\n`;
+    const root = setup(t, { 'AGENTS.md': crlf(['# Project', '', '## SDDs', '', '- Read the SDD first.', '### Detail', '- More.', '', '## Build', '', 'npm test']) });
+    assert.match(blockWarnings(run(root, ['check']).stdout).join('\n'), /^AGENTS\.md:3: warning: the skills' agent block is from before the markers, not this plugin's/);
+    assert.equal(run(root, ['instructions']).stdout, `AGENTS.md: rewritten, v${VERSION}.\n`);
+    assert.equal(read(root, 'AGENTS.md'), crlf(['# Project', '', ...BLOCK, '', '## Build', '', 'npm test']));
+  });
+
+  test('a copy from a newer plugin is left alone, and check says to update the plugin', (t) => {
+    const newer = [startAt('2999-01-01.1'), '- A newer rule.', END];
+    const root = setup(t, { 'AGENTS.md': newer });
+    const r = run(root, ['instructions']);
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(r.stdout, `AGENTS.md: v2999-01-01.1, newer than this plugin's v${VERSION}; left as it is. Update the plugin.\n`);
+    assert.equal(read(root, 'AGENTS.md'), text(newer));
+    assert.match(blockWarnings(run(root, ['check']).stdout).join('\n'), new RegExp(`is v2999-01-01\\.1, newer than this plugin's v${esc(VERSION)}; update the plugin$`));
+  });
+
+  test('a start marker with no end marker is refused, and the file left as it is', (t) => {
+    const broken = [BLOCK[0], '- A rule.', '', '## Build'];
+    const root = setup(t, { 'CLAUDE.md': broken });
+    const r = run(root, ['instructions']);
+    assert.equal(r.status, 1);
+    assert.equal(r.stdout, 'CLAUDE.md: the block has no end marker, <!-- skillbox:end -->. Add it by hand where the block ends, then run this again.\n');
+    assert.equal(read(root, 'CLAUDE.md'), text(broken));
+    assert.match(run(root, ['check']).stdout, /^CLAUDE\.md:1: warning: the skills' agent block has no end marker/m);
+  });
+
+  test('every file that holds a block is brought up to date; a file named outside the repository is refused', (t) => {
+    const root = setup(t, { 'CLAUDE.md': ['## SDDs', '', '- Old.'], '.claude/CLAUDE.md': ['# Team', ''], 'AGENTS.md': BLOCK });
+    let r = run(root, ['instructions', '.claude/CLAUDE.md']);
+    assert.equal(r.stdout, [`CLAUDE.md: rewritten, v${VERSION}.`, `.claude/CLAUDE.md: block added, v${VERSION}.`, `AGENTS.md: up to date, v${VERSION}.`, ''].join('\n'));
+    assert.equal(read(root, '.claude/CLAUDE.md'), text(['# Team', '', ...BLOCK]));
+    r = run(root, ['instructions', path.join(tempRoot(t), 'AGENTS.md')]);
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /AGENTS\.md is not a file inside the repository/);
+  });
+
+  test('a CLAUDE.md that links to AGENTS.md is one file, written through the link', (t) => {
+    const root = setup(t, { 'AGENTS.md': ['## SDDs', '', '- Old.'] });
+    try {
+      fs.symlinkSync('AGENTS.md', path.join(root, 'CLAUDE.md'));
+    } catch {
+      t.skip('this system does not let the test make a symlink');
+      return;
+    }
+    assert.equal(run(root, ['instructions']).stdout, `CLAUDE.md: rewritten, v${VERSION}.\n`);
+    assert.ok(fs.lstatSync(path.join(root, 'CLAUDE.md')).isSymbolicLink());
+    assert.equal(read(root, 'AGENTS.md'), text(BLOCK));
+  });
+
+  test('needs both stores and their indexes in the config, and names the keys the init sets', (t) => {
+    const root = repo(t, { 'AGENTS.md': ['## SDDs', '', '- Old.'] }, { useGit: false });
+    const r = run(root, ['instructions']);
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /has no sdd\.index, paths\.kbRoot, kb\.index; the to-sdd or to-kb skill's init sets them/);
+    assert.deepEqual(blockWarnings(run(root, ['check']).stdout), []);
+  });
+
+  test("each skill's copy of the script finds the template beside it", (t) => {
+    for (const skill of ['to-sdd', 'to-kb']) {
+      const root = setup(t);
+      const copy = path.join(__dirname, '..', '..', 'skills', skill, 'scripts', 'doc-check.js');
+      const r = spawnSync(process.execPath, [copy, 'instructions', 'AGENTS.md'], { cwd: root, encoding: 'utf8', env: scriptEnv() });
+      assert.equal(r.status, 0, r.stderr);
+      assert.equal(read(root, 'AGENTS.md'), text(BLOCK), skill);
+    }
+  });
+});

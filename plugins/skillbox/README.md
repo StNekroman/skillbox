@@ -12,6 +12,7 @@ them.
 | ----------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------- |
 | `/skillbox:fork-at`                             | command | Fork the conversation at a chosen turn                                                                  |
 | `/skillbox:fork-tree`                           | command | Show where this session sits among its forks                                                            |
+| `/skillbox:update-instructions`                 | command | Bring the SDD and knowledge-base block in `CLAUDE.md` and `AGENTS.md` up to date with the installed skills |
 | [`draft-ticket`](skills/draft-ticket/README.md) | skill   | Writes one markdown file per deliverable, in a fixed ticket structure, every claim verified             |
 | [`to-adr`](skills/to-adr/README.md)             | skill   | Records a settled architecture decision as an ADR — and writes nothing when there is none               |
 | [`to-sdd`](skills/to-sdd/README.md)             | skill   | After a code change, corrects or extends the SDDs it touched — and writes nothing below the bar         |
@@ -152,6 +153,21 @@ about. When that code changes, `to-sdd` reports the page's section, so it is loo
 `to-sdd` and `to-kb` share one init and one block for `CLAUDE.md` or `AGENTS.md`: whichever runs
 first sets up both stores. [The skill's README](skills/to-kb/README.md) has what belongs and how
 sources are kept.
+
+## update-instructions
+
+```
+/skillbox:update-instructions [--dry-run] [file ...]
+```
+
+The block the init wrote into `CLAUDE.md` or `AGENTS.md` is a copy, and a plugin update can change
+the block it ships. This rewrites each copy that differs — only the lines between its markers — and
+adds the block to each file named that has none. `--dry-run` shows the lines that go and come.
+A copy written by a newer plugin is left alone, so teammates a version apart do not undo each
+other's update. `check` warns while a copy is out of date, so the skills mention it when they run.
+
+It runs `doc-check.js instructions`, which any agent, or you from a terminal, can run directly:
+`node <skill folder>/scripts/doc-check.js instructions` from the repository root.
 
 ## Configuration
 
