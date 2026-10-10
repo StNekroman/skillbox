@@ -48,3 +48,20 @@ test('drift finds a missing, a changed and a leftover copy, and sync repairs all
   assert.ok(!fs.existsSync(path.join(root, 'skills/a/scripts/old-name.js')));
   assert.ok(fs.existsSync(path.join(root, 'skills/a/references/own.md')), 'a reference the source does not have stays');
 });
+
+test('a skill that names its refs gets only those references, and keeps its own of the same names', (t) => {
+  const opts = { source: 'src', skills: ['skills/a', { dir: 'skills/b', refs: ['block.md'] }] };
+  const root = tree(t, {
+    'src/check.js': 'check\n',
+    'src/references/block.md': 'block\n',
+    'src/references/config.md': 'shared config\n',
+    'skills/b/references/config.md': 'b keeps its own config\n',
+  });
+  assert.deepEqual(
+    plan(root, opts).map((c) => c.to),
+    ['skills/a/scripts/check.js', 'skills/b/scripts/check.js', 'skills/a/references/block.md', 'skills/b/references/block.md', 'skills/a/references/config.md'],
+  );
+  sync(root, opts);
+  assert.deepEqual(drift(root, opts), []);
+  assert.equal(fs.readFileSync(path.join(root, 'skills/b/references/config.md'), 'utf8'), 'b keeps its own config\n');
+});

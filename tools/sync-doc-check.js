@@ -8,14 +8,20 @@
 //
 // What a skill gets: everything in the source but references/ goes to <skill>/scripts/, which the
 // sync owns outright, so a file the source dropped is deleted there. references/<name>.md goes to
-// <skill>/references/<name>.md; only those names are the sync's, and the skill's other references
-// are its own.
+// <skill>/references/<name>.md — every one, or only those the skill's `refs` names; only those
+// names are the sync's, and the skill's other references are its own.
 
 const fs = require('fs');
 const path = require('path');
 
 const SOURCE = 'plugins/skillbox/scripts/doc-check';
-const SKILLS = ['plugins/skillbox/skills/to-sdd', 'plugins/skillbox/skills/to-kb'];
+// to-adr runs the checker only for the ADR index and the agent block, and keeps its own config.md,
+// so of the references it takes only the block's template, which the script reads.
+const SKILLS = [
+  'plugins/skillbox/skills/to-sdd',
+  'plugins/skillbox/skills/to-kb',
+  { dir: 'plugins/skillbox/skills/to-adr', refs: ['instructions-block.md'] },
+];
 const SHARED_REFS = 'references';
 
 const posix = (p) => p.split(path.sep).join('/');
@@ -31,13 +37,17 @@ function walk(dir) {
   return out.sort();
 }
 
+// A skill as SKILLS lists it, a folder or { dir, refs }, as { dir, refs }; refs null for all.
+const skillOf = (s) => (typeof s === 'string' ? { dir: s, refs: null } : { refs: null, ...s });
+
 // Every copy the source makes: { from, to }, both relative to root.
 function plan(root, { source = SOURCE, skills = SKILLS } = {}) {
   const out = [];
   for (const file of walk(path.join(root, source))) {
     const shared = file.startsWith(`${SHARED_REFS}/`);
-    for (const skill of skills) {
-      out.push({ from: `${source}/${file}`, to: shared ? `${skill}/${file}` : `${skill}/scripts/${file}` });
+    for (const { dir, refs } of skills.map(skillOf)) {
+      if (shared && refs && !refs.includes(file.slice(SHARED_REFS.length + 1))) continue;
+      out.push({ from: `${source}/${file}`, to: shared ? `${dir}/${file}` : `${dir}/scripts/${file}` });
     }
   }
   return out;
@@ -54,9 +64,9 @@ function drift(root, opts = {}) {
     else if (!fs.readFileSync(dest).equals(fs.readFileSync(path.join(root, from)))) problems.push({ dest: to, problem: 'differs' });
   }
   const planned = new Set(copies.map((c) => c.to));
-  for (const skill of skills) {
-    for (const file of walk(path.join(root, skill, 'scripts'))) {
-      const to = `${skill}/scripts/${file}`;
+  for (const { dir } of skills.map(skillOf)) {
+    for (const file of walk(path.join(root, dir, 'scripts'))) {
+      const to = `${dir}/scripts/${file}`;
       if (!planned.has(to)) problems.push({ dest: to, problem: 'extra' });
     }
   }
@@ -77,13 +87,13 @@ function sync(root, opts = {}) {
     fs.copyFileSync(path.join(root, from.get(dest)), abs);
   }
   // Directories the deletions emptied.
-  for (const skill of opts.skills || SKILLS) {
+  for (const skill of (opts.skills || SKILLS).map(skillOf)) {
     const prune = (dir) => {
       if (!fs.existsSync(dir)) return;
       for (const e of fs.readdirSync(dir, { withFileTypes: true })) if (e.isDirectory()) prune(path.join(dir, e.name));
       if (!fs.readdirSync(dir).length) fs.rmdirSync(dir);
     };
-    prune(path.join(root, skill, 'scripts'));
+    prune(path.join(root, skill.dir, 'scripts'));
   }
   return problems;
 }

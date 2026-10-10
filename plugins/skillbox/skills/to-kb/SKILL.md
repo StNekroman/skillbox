@@ -2,7 +2,7 @@
 name: to-kb
 description: Add research results and facts about the world outside the code — services the product integrates and their rules, laws and policies it must follow, its market and users, know-how the team wants to keep — to the repository’s knowledge base, as KBDOC pages that carry their sources. Use after a task turned up findings the user agreed to keep, or when the user asks to add something to the knowledge base; do not use for how the repository’s code works (to-sdd), for decisions (to-adr), tickets or code comments.
 metadata:
-  prompt-version: "2026-10-10.1"
+  prompt-version: "2026-10-10.2"
 ---
 
 # Add to the knowledge base
@@ -51,9 +51,9 @@ A binary — a PDF, a screenshot, a contract — goes in `<kbRoot>/attachments/`
 
 ## Configuration
 
-Read `.skillbox/tickets.json` under the repository root. It supplies `paths.kbRoot`, `kb.maxLines` and `kb.index`, and `paths.sddRoot`, `sdd.maxLines` and `sdd.index` for the SDDs.
+Read `.skillbox/tickets.json` under the repository root. It supplies `paths.kbRoot`, `kb.maxLines` and `kb.index`, and `paths.sddRoot`, `sdd.maxLines` and `sdd.index` for the SDDs. Where the repository keeps ADRs, it supplies `paths.adrRoot` and `adr.index` too.
 
-If the file is missing, or lacks any of those six keys, run the init in [the configuration reference](references/config.md), then carry on. The init writes the missing keys, and in the same run settles the repository's agent instructions, which name both stores. The script has no default limit, so the value in force is always the one in the file.
+If the file is missing, lacks any of those six keys, or has `paths.adrRoot` without `adr.index`, run the init in [the configuration reference](references/config.md), then carry on. The init writes the missing keys, and in the same run settles the repository's agent instructions, which name both stores. The script has no default limit, so the value in force is always the one in the file.
 
 A directory the user names in the request wins for this run. When the init is running anyway, that directory is also the answer to its question.
 

@@ -22,6 +22,9 @@ question.
     "adrRoot": "devdoc/architecture-decisions",
     "adrTemplate": "devdoc/architecture-decisions/template.md",
     "docRoots": ["devdoc/architecture-decisions", "devdoc/kb", "devdoc/sdd", "devdoc/specs", "devdoc/tech"]
+  },
+  "adr": {
+    "index": { "path": "devdoc/architecture-decisions/index.generated.md" }
   }
 }
 ```
@@ -30,11 +33,19 @@ question.
 |---|---|
 | `paths.adrRoot` | Where architecture decision records live, relative to the repository root |
 | `paths.adrTemplate` | Optional. A markdown file in the repository whose skeleton this skill copies instead of its built-in template. Omit the key to use the built-in |
+| `adr.index` | The ADR index: one file listing every record, its title linking the file, then its status. It takes only `path`, which defaults to `<adrRoot>/index.generated.md`. Without the key there is no index |
 | `paths.docRoots` | Directories searched for inbound references to a ticket draft when it is pushed to a tracker. This skill only adds `adrRoot` to it |
 | `jira.site` | Optional. Site URL, used to write `<site>/browse/<KEY>` links |
 
 The rest of the `jira` block belongs to `jira-push-ticket`. It may be absent in a repository that
 never pushes tickets.
+
+The index is generated: `scripts/doc-check.js index` writes it from the records, and so does the
+plugin's start-of-turn hook before every prompt, where it is set up. A record is a markdown file
+directly in `adrRoot` whose name carries a number — `ADR-7-…`, `adr-007-…`, `0007-…` — other than
+the template. So the index is never edited and never committed. `to-sdd` and `to-kb` read this
+key too: their init writes it when `paths.adrRoot` is set and it is not, and the block they keep
+in the agent instructions points agents at the index.
 
 ## When the file or a key is missing
 
@@ -47,6 +58,8 @@ asked — the init is a step inside the work, not a reason to stop and hand it b
    you found; ask only for what you could not.
 3. **Write the keys**, leaving the rest of the file untouched, then say in one line what was
    written and that it is meant to be committed.
+4. **Settle the agent instructions**, as `adr.index` below describes, in a run that wrote
+   `adr.index`.
 
 Fill only the keys below. Where ticket drafts go is not this skill's question.
 
@@ -65,6 +78,25 @@ For `adrTemplate`, look inside `adrRoot` for a template file: `template.md`, `TE
 `adr-template.md`, `0000-template.md`. Propose it when there is one. When there is none, leave the
 key out without asking, and mention in the one-line report that the key exists.
 
+### `adr.index`
+
+Write `{ "path": "<adrRoot>/index.generated.md" }` without asking, and say in the one-line report
+that the path is there to tune. Then make git ignore the file: add its path to the repository's
+root `.gitignore`, creating it if there is none, unless a rule there already covers it. A
+committed copy conflicts on every merge that brings new records, and goes stale wherever no hook
+rewrites it. Then run `scripts/doc-check.js index`, which writes it.
+
+Then the agent instructions. An agent reads the index before a design choice only when the
+repository's always-loaded instructions tell it to, and the block that `to-sdd` and `to-kb` keep
+there does, once the config has the key. Look for the block in `CLAUDE.md`, `.claude/CLAUDE.md`
+and `AGENTS.md`: it runs from a line starting `<!-- skillbox:begin` to `<!-- skillbox:end -->`.
+
+- **A file holds it.** `scripts/doc-check.js instructions --dry-run` shows the lines that go and
+  the lines that come. Show them and ask; on yes, run it without `--dry-run`. These files shape
+  every future session in the repository, so never write without the yes.
+- **No file holds it.** Leave the files alone, and say in the report that the ADR index is read by
+  agents once the `to-sdd` or `to-kb` init has added its block.
+
 ### `jira.site`
 
 A file with no `jira` block is complete for recording decisions; leave it alone. Only when a record
@@ -82,6 +114,8 @@ ignore that one path:
 .skillbox/cache/
 ```
 
-Nothing here holds a secret, so nothing else needs ignoring. Suggest that line when writing the
+The ADR index is derived too, but sits beside the records by default, where an agent listing them
+finds it; its own line in `.gitignore` covers it. Nothing here holds a secret, so nothing else
+needs ignoring. Suggest that line when writing the
 config into a repository that has no `.skillbox/` yet, rather than ignoring `.skillbox/` wholesale
 — that would drop the configuration the team is meant to share.

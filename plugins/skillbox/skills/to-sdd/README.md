@@ -101,7 +101,9 @@ version apart do not undo each other's update. A block from before the markers, 
 `## SDDs` or `## SDDs and the knowledge base`, is recognised and replaced the same way.
 
 It does not write ADRs — that is [to-adr](../to-adr/README.md)'s job — but an SDD section links the
-ADR behind a design choice when there is one. Nor does it edit knowledge-base pages: when a change
+ADR behind a design choice when there is one, found through the ADR index. Where the repository
+keeps ADRs, the init also adds that index, `adr.index`, and the block sends agents to it before a
+design choice. Nor does it edit knowledge-base pages: when a change
 touches code that a page links, the report names that page's section and suggests `to-kb`.
 
 ## The script and the hooks
@@ -122,7 +124,7 @@ internals and tests are documented in the plugin's
 | `refs --to ID[§x.y]` | Everything that cites a doc or a section |
 | `next SDD` | The id a new SDD takes, counting every number in git history, deleted ones included |
 | `migrate [--dry-run]` | Single-file SDDs (`SDDnnn-slug.md`) into folders, links to them into ids, short-form references into the full form |
-| `index` | Rewrites each store's index file, `sdd.index` and `kb.index`, where it no longer matches the docs. `fix` and `migrate` do it too |
+| `index` | Rewrites each store's index file, `sdd.index` and `kb.index`, and the ADR index, `adr.index`, where it no longer matches the docs or the records. `fix` and `migrate` do it too |
 | `instructions [FILE …] [--dry-run]` | Brings the skills' block in `CLAUDE.md`, `.claude/CLAUDE.md` and `AGENTS.md` up to date with the one this copy ships, and adds it to each file named that lacks it. `check` warns while a copy is out of date |
 
 `check` sees a reference however it was written, a section's title included: in a list
@@ -162,7 +164,7 @@ the folders instead.
 
 | | |
 |---|---|
-| Config | `paths.sddRoot`, `sdd.maxLines` and `sdd.index`, set up with `paths.kbRoot`, `kb.maxLines` and `kb.index` — see [references/config.md](references/config.md). The limits have no default; the init writes 500, and git-ignores the index files |
+| Config | `paths.sddRoot`, `sdd.maxLines` and `sdd.index`, set up with `paths.kbRoot`, `kb.maxLines` and `kb.index`, and `adr.index` where `paths.adrRoot` is set — see [references/config.md](references/config.md). The limits have no default; the init writes 500, and git-ignores the index files |
 | Git | For `refs --changed`, `next` and the Stop hook. `check`, `fix`, `migrate`, `lint`, `index` and the start-of-turn hook work without it |
 | Tools | Read, grep, git, and the script. It never runs builds or tests |
 

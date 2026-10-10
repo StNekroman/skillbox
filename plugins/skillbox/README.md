@@ -12,7 +12,7 @@ them.
 | ----------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------- |
 | `/skillbox:fork-at`                             | command | Fork the conversation at a chosen turn                                                                  |
 | `/skillbox:fork-tree`                           | command | Show where this session sits among its forks                                                            |
-| `/skillbox:update-instructions`                 | command | Bring the SDD and knowledge-base block in `CLAUDE.md` and `AGENTS.md` up to date with the installed skills |
+| `/skillbox:update-instructions`                 | command | Bring the SDD, ADR and knowledge-base block in `CLAUDE.md` and `AGENTS.md` up to date with the installed skills |
 | [`draft-ticket`](skills/draft-ticket/README.md) | skill   | Writes one markdown file per deliverable, in a fixed ticket structure, every claim verified             |
 | [`to-adr`](skills/to-adr/README.md)             | skill   | Records a settled architecture decision as an ADR — and writes nothing when there is none               |
 | [`to-sdd`](skills/to-sdd/README.md)             | skill   | After a code change, corrects or extends the SDDs it touched — and writes nothing below the bar         |
@@ -108,6 +108,11 @@ go. `paths.adrTemplate` points it at the repository's own ADR template instead o
 [The skill's README](skills/to-adr/README.md) has the bar a decision must clear and what it never
 invents.
 
+Like the SDDs and the knowledge base, the records get a generated index, `adr.index`: every record,
+its title linking the file, then its status — no sections, since records follow the repository's
+own template. The block in `CLAUDE.md` or `AGENTS.md` sends agents to it before a design choice
+other code will follow, so an accepted decision is found before it is undone, not after.
+
 ## to-sdd
 
 An SDD is agent-written memory of one feature area or shared mechanism, committed to the
@@ -125,8 +130,8 @@ into its parent's is merged back, so the agent always reads whole files instead 
 one. References are ids, `SDD001§3.2`, never paths, so nothing breaks when files split or merge.
 
 Each store also has an index, `index.generated.md` by default: every doc, its title linking its
-`README.md`, then its summary, so an agent picks the docs to open from one file instead of guessing
-from folder names. It is generated and git-ignored, so it never conflicts on a merge. `fix`
+`README.md`, then its summary — for the ADRs, every record and its status — so an agent picks the
+docs to open from one file instead of guessing from folder names. It is generated and git-ignored, so it never conflicts on a merge. `fix`
 rewrites it after writing, and a start-of-turn hook rewrites it before every prompt, so a pull, a
 checkout or a rebase shows in it at once.
 
@@ -205,6 +210,9 @@ installed on its own. The whole file:
     "maxLines": 500,
     "index": { "path": "devdoc/kb/index.generated.md", "summary": "paragraph", "depth": 0 }
   },
+  "adr": {
+    "index": { "path": "devdoc/architecture-decisions/index.generated.md" }
+  },
   "domainNotes": ".github/copilot-instructions.md"
 }
 ```
@@ -216,6 +224,7 @@ installed on its own. The whole file:
 | `paths.sddRoot`, `sdd.maxLines`            | `to-sdd` or `to-kb`, one shared init                           | `to-sdd`, the shared script, the Stop hook   |
 | `paths.kbRoot`, `kb.maxLines`              | `to-sdd` or `to-kb`, one shared init                           | `to-kb`, the shared script, the Stop hook    |
 | `sdd.index`, `kb.index`                    | `to-sdd` or `to-kb`, one shared init                           | the shared script, the start-of-turn hook    |
+| `adr.index`                                | `to-adr`, or the `to-sdd` and `to-kb` init                     | the shared script, the start-of-turn hook, `to-sdd`, `to-adr` |
 | `paths.docRoots`                           | `draft-ticket`; `to-adr`, `to-sdd` and `to-kb` add their roots | `jira-push-ticket`                           |
 | `domainNotes`                              | you, by hand                                                   | `draft-ticket`                               |
 | `jira.site`                                | whichever skill first cites or pushes an issue                 | `draft-ticket`, `to-adr`, `jira-push-ticket` |

@@ -32,6 +32,9 @@ nor `paths.kbRoot`.
   "kb": {
     "maxLines": 500,
     "index": { "path": "devdoc/kb/index.generated.md", "summary": "paragraph", "depth": 0 }
+  },
+  "adr": {
+    "index": { "path": "devdoc/architecture-decisions/index.generated.md" }
   }
 }
 ```
@@ -42,6 +45,7 @@ nor `paths.kbRoot`.
 | `paths.kbRoot` | Where knowledge-base page folders live, and their `attachments/` folder. Read by `to-kb`, the script and the Stop hook |
 | `sdd.maxLines`, `kb.maxLines` | The most lines one file of that type may hold before `doc-check.js fix` moves its subsections into files of their own. No default: the init writes them |
 | `sdd.index`, `kb.index` | The store's index: one file listing every doc, its title linking its `README.md`, then its summary. Without the key there is no index. See `The index` |
+| `adr.index` | The ADR index, for a repository whose file has `paths.adrRoot`: one file listing every architecture decision record, its title linking the file, then its status. The `to-adr` skill keeps the records; the script, the hook and the agent instructions only list them |
 | `paths.docRoots` | Directories searched for inbound references to a ticket draft when it is pushed to a tracker. These skills only add `sddRoot` and `kbRoot` to it |
 
 ### The index
@@ -53,21 +57,28 @@ where the hook is set up. So the index is never edited and never committed.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `path` | `<root>/index.generated.md` | Where the file goes, relative to the repository root. Not inside a doc folder. Two stores may name the same file; it then lists both, under a heading each |
+| `path` | `<root>/index.generated.md` | Where the file goes, relative to the repository root. Not inside a doc folder. Stores may name the same file; it then lists each, under a heading of its own |
 | `summary` | `"paragraph"` | What each entry shows of the doc's summary: `"paragraph"`, the whole of it; `"sentence"`, its first sentence; `"none"` |
 | `depth` | `0` | How many levels of section titles each entry lists under the summary. `0` lists none |
 
 A key left out takes its default, so `"index": {}` is enough. With summaries near the limit, the
 defaults make about 600 characters per doc, and one level of sections about 900.
 
+`adr.index` takes only `path`: a record is listed by its title, which names the decision, and its
+status, and its sections are not numbered for a deeper list. A record is a markdown file directly
+in `paths.adrRoot` whose name carries a number — `ADR-7-…`, `adr-007-…`, `0007-…` — other than the
+template `paths.adrTemplate` names.
+
 ## When the file or a key is missing
 
 Do not guess, and do not fall back to defaults. Run this, then continue with the task that was
 asked — the init is a step inside the work, not a reason to stop and hand it back.
 
-The init covers all six keys above, whichever skill runs it. Fill only the ones that are missing:
-a repository set up for SDDs before the knowledge base existed gets `paths.kbRoot`, `kb.maxLines`
-and `kb.index` now, and one set up before the index existed gets `sdd.index` and `kb.index`.
+The init covers all six keys above, whichever skill runs it, and `adr.index` when the file has
+`paths.adrRoot`. Fill only the ones that are missing: a repository set up for SDDs before the
+knowledge base existed gets `paths.kbRoot`, `kb.maxLines` and `kb.index` now, one set up before
+the index existed gets `sdd.index` and `kb.index`, and one whose ADRs predate their index gets
+`adr.index`.
 
 1. **Find the repository root.** `git rev-parse --show-toplevel`. Create `.skillbox/` there if it
    does not exist, and write the file inside it.
@@ -78,7 +89,8 @@ and `kb.index` now, and one set up before the index existed gets `sdd.index` and
 4. **Settle the agent instructions**, as `The agent instructions` describes. Do this in every run
    where the init wrote a key, and only then.
 
-Fill only the keys below. Where ticket drafts or ADRs go is not this init's question.
+Fill only the keys below. Where ticket drafts or ADRs go is not this init's question; the ADR index
+is, once `paths.adrRoot` says where they are.
 
 ### `paths.sddRoot` and `sdd.maxLines`
 
@@ -105,23 +117,25 @@ they are there to tune. Never leave one out: `doc-check.js` has no default, so t
 force is always the one written in the file. A lower value later splits the files over it; a
 higher one merges nothing back, since no path may move.
 
-### `sdd.index` and `kb.index`
+### `sdd.index`, `kb.index` and `adr.index`
 
-Write each with every key spelled out, so the values in force are visible:
+Write `sdd.index` and `kb.index` with every key spelled out, so the values in force are visible:
 `{ "path": "<root>/index.generated.md", "summary": "paragraph", "depth": 0 }`. Do not ask; say in
-the one-line report that `summary` and `depth` are there to tune.
+the one-line report that `summary` and `depth` are there to tune. When the file has
+`paths.adrRoot`, write `adr.index` as `{ "path": "<adrRoot>/index.generated.md" }` the same way.
 
-Then make git ignore both files. Add their paths to the repository's root `.gitignore`, creating it
+Then make git ignore the files. Add their paths to the repository's root `.gitignore`, creating it
 if there is none, unless a rule there already covers them. `check` warns about an index git would
 commit: a committed copy conflicts on every merge that brings new docs, and goes stale wherever no
 hook rewrites it.
 
-Then run `doc-check.js index`, which writes both files.
+Then run `doc-check.js index`, which writes them.
 
 ## The agent instructions
 
 An agent reads the SDDs before changing code, and the knowledge base before working with an
-outside service, only when the repository's always-loaded instructions tell it to. Two files at
+outside service, only when the repository's always-loaded instructions tell it to. The same holds
+for the ADR index before a design choice: the block names it when the file has `adr.index`. Two files at
 the repository root carry those: `CLAUDE.md`, which Claude Code reads, and `AGENTS.md`, which most
 other coding agents read. Claude Code reads `AGENTS.md` too, but only while there is no
 `CLAUDE.md`. Here `CLAUDE.md` means `CLAUDE.md` or `.claude/CLAUDE.md`.
@@ -156,7 +170,7 @@ ignore that one path:
 .skillbox/cache/
 ```
 
-The store indexes are derived too, but sit beside the docs by default, where an agent listing the
+The store indexes, the ADR index among them, are derived too, but sit beside the docs by default, where an agent listing the
 store finds them; their own lines in `.gitignore` cover them. Nothing here holds a secret, so
 nothing else needs ignoring. Suggest the `.skillbox/cache/` line when writing the config into a
 repository that has no `.skillbox/` yet, rather than ignoring `.skillbox/` wholesale — that would

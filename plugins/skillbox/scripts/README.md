@@ -7,7 +7,8 @@ script in the plugin. The command files in `../commands/` invoke the fork script
 The doc checker behind the `to-sdd` and `to-kb` skills and both hooks has its one editable
 source here, in `doc-check/`, with the references both skills share. Each skill carries identical
 copies — the script in its own `scripts/`, the shared references in its `references/` — so that
-the skill folder works when it is installed on its own; `npm run sync` writes the copies from the
+the skill folder works when it is installed on its own. `to-adr` carries the script too, for the
+ADR index and the agent block, and of the references only the block's template; `npm run sync` writes the copies from the
 source, and `npm test` fails while one differs. Edit the source, never a copy. A skill runs its
 copy through `${CLAUDE_SKILL_DIR}`; `../hooks/hooks.json` runs the source through
 `${CLAUDE_PLUGIN_ROOT}`. The checker requires nothing from outside `doc-check/`.
@@ -17,8 +18,8 @@ copy through `${CLAUDE_SKILL_DIR}`; `../hooks/hooks.json` runs the source throug
 | `fork-at.js` | Resolves a cut point and opens a window at once; in that window, creates the child with one headless turn and resumes it |
 | `fork-tree.js` | Renders the fork tree; interactive picker when run from a TTY |
 | `lib/fork-graph.js` | Shared: transcript reading, edge collection, session metadata, terminal launching |
-| `doc-check/doc-check.js` | Doc checks and repairs, for SDDs and knowledge-base pages — `check`, `fix`, `migrate`, `lint`, `refs`, `next`, `index` — the skills' block in the agent instructions, `instructions`, the Stop hook, `hook`, and the start-of-turn hook, `index-hook`. Disk and git work only |
-| `doc-check/lib/doc-model.js` | The doc model, pure: the doc types, parsing a doc, the rules, the mechanical repairs, finding references and links, the content leads, the store index's text |
+| `doc-check/doc-check.js` | Doc checks and repairs, for SDDs and knowledge-base pages — `check`, `fix`, `migrate`, `lint`, `refs`, `next`, `index` — the ADR index, the skills' block in the agent instructions, `instructions`, the Stop hook, `hook`, and the start-of-turn hook, `index-hook`. Disk and git work only |
+| `doc-check/lib/doc-model.js` | The doc model, pure: the doc types, parsing a doc, the rules, the mechanical repairs, finding references and links, the content leads, the store index's text, an ADR's title and status |
 | `doc-check/references/` | What `to-sdd` and `to-kb` share word for word: the format, the configuration and its init, the agent-instructions block |
 | `test/` | Unit and end-to-end tests for all of the above, run with Node's built-in runner |
 
@@ -229,9 +230,17 @@ hook all render every index file from the docs as they are and write it only whe
 changed, through a temporary file renamed into place, so a reader never sees half of one. There
 is no marker of what changed since the last run: a correct one — the HEAD commit misses
 uncommitted edits and a `stash`, a folder's modification time misses edits inside it — costs
-nearly what a rebuild does, and the hook pays about 0.1 s to start Node either way. Two types whose
+nearly what a rebuild does, and the hook pays about 0.1 s to start Node either way. Stores whose
 `index.path` is the same share one file. The reference scans skip the index files, whose title
 links would read as citations by path, and `check` warns about one git would commit.
+
+**ADRs are listed, never checked.** A record is a markdown file directly in `paths.adrRoot` whose
+name carries a number — `ADR-7-…`, `adr-007-…`, `0007-…` — less the template. Its index entry is its
+level-1 heading, or the title in its front matter, then its status: from front matter, from a
+`Status:` field above the first section, or from the first line under a `Status` heading, in plain
+text. Records follow the repository's own template and are cited by path, so ADRs are not a type in
+`TYPES`: no rule applies to them and the index lists no sections. The reference scans still read
+them, like any file, for citations of SDD and knowledge-base sections.
 
 **The start-of-turn hook never stands in the way.** `index-hook` reads `cwd` — Cursor's own
 `beforeSubmitPrompt`, `workspace_roots` — prints nothing, so it adds nothing to the agent's
@@ -244,7 +253,9 @@ with the config's paths and writes it between `<!-- skillbox:begin v… -->` and
 outside them. The version is the template's `block-version`, bumped by hand with every change to
 the block. A copy is rewritten when it differs and is not newer; a newer one is left alone, so
 teammates whose plugins are a version apart do not flip the file back and forth. A block from
-before the markers is found by its old heading and runs to the next heading of its level. `check`
+before the markers is found by its old heading and runs to the next heading of its level. Parts of
+the template stand only when the config has what they name — the ADR lines need `adr.index` — so a
+config that gains the key changes the block at the same version. `check`
 warns about each copy that differs, never about a file without one, and the hooks never write it:
 the file shapes every session, so it changes only when someone runs the command.
 
@@ -290,7 +301,7 @@ but `references/` into the skill's `scripts/`, which it owns outright — a file
 has is deleted there — and `references/<name>.md` into the skill's `references/`, where only those
 names are its own. It lives outside `plugins/`, so it never installs. `npm run sync` writes the
 copies; `npm run sync:check` lists what is out of date. A skill that needs the checker is added to
-its `SKILLS` list. `.gitattributes` marks the copies generated, so a pull request collapses them.
+its `SKILLS` list, with `refs` naming the references it takes when it does not take them all. `.gitattributes` marks the copies generated, so a pull request collapses them.
 
 ## What they write
 

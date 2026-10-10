@@ -2,7 +2,7 @@
 name: to-adr
 description: Record the architecture decisions settled in the current conversation as ADR markdown files under the repository’s ADR directory — the decision, the alternatives weighed, why each lost, and the consequences. Writes nothing when the conversation settled nothing architecturally significant. Use when a design discussion has reached a decision worth keeping; do not use for tickets, specs, meeting notes, or minor choices.
 metadata:
-  prompt-version: "2026-10-01.1"
+  prompt-version: "2026-10-10.1"
 ---
 
 # Record an Architecture Decision
@@ -17,7 +17,7 @@ The output is a markdown file in the repository's ADR directory. Most conversati
 2. If none clears it, stop and report. The repository is not touched and nothing is asked.
 3. Read the configuration, running its init if needed.
 4. Read the ADR directory: what is already recorded, how records are named, what shape they take. Drop any candidate that is already recorded; if that leaves none, stop and report.
-5. Write one record per decision, then report.
+5. Write one record per decision, rewrite the ADR index, then report.
 
 The bar comes before the configuration on purpose. When nothing qualifies, the user must not be asked where to store a file that will never be written.
 
@@ -62,9 +62,9 @@ If the user reads that and still asks for a record, write it — it is their rep
 
 ## Configuration
 
-Read `.skillbox/tickets.json` under the repository root. It supplies `paths.adrRoot`, the optional `paths.adrTemplate`, and `jira.site` for citing issues.
+Read `.skillbox/tickets.json` under the repository root. It supplies `paths.adrRoot`, the optional `paths.adrTemplate`, `adr.index` for the ADR index, and `jira.site` for citing issues.
 
-If the file is missing, or it has no `paths.adrRoot`, run the init in [the configuration reference](references/config.md), then carry on with the request. If `paths.adrTemplate` is set but the file it names does not exist, stop and ask — never fall back to the built-in template in silence.
+If the file is missing, or it has no `paths.adrRoot` or no `adr.index`, run the init in [the configuration reference](references/config.md), then carry on with the request. If `paths.adrTemplate` is set but the file it names does not exist, stop and ask — never fall back to the built-in template in silence.
 
 If a record cites a Jira key and the file has no `jira.site`, ask for the site and add it, as the same reference describes.
 
@@ -78,7 +78,7 @@ List `paths.adrRoot` before writing, and read:
 - **The most recent record in full**, to match its tone, depth and header format.
 - **Any record the new one builds on**, in full, so the two do not contradict each other.
 
-A template file or an index in the directory is not a record.
+A template file or an index in the directory is not a record, and neither is the ADR index, `adr.index.path`.
 
 ## Structure
 
@@ -150,9 +150,9 @@ Write to `<adrRoot>/<name>.md`, creating the directory if it does not exist. Pic
 
 `<n>` is one more than the highest number any record in the directory has ever had. Count deleted records too — `git log --format= --name-only --diff-filter=D -- <adrRoot>` lists them. A number is never reused, because another document may cite it.
 
-The title names the chosen approach and what it is for: "Content-addressable storage for file management", not "File storage". A title that names only the topic makes the reader open the file to learn the decision. The slug is the title in kebab-case: `content-addressable-storage-for-file-management`.
+The title names the chosen approach and what it is for: "Content-addressable storage for file management", not "File storage". The ADR index lists each record by its title and status alone, and an agent about to make a design choice picks the records to open from it. A title that names only the topic makes it open the file to learn the decision, or skip a record it should have read. The slug is the title in kebab-case: `content-addressable-storage-for-file-management`.
 
-If the directory keeps an index — a `README.md` or `index.md` listing its records — add a line for the new record in the index's own format.
+If the directory keeps an index by hand — a `README.md` or `index.md` listing its records — add a line for the new record in the index's own format. Never edit the ADR index: see `The ADR index`.
 
 ## Superseding
 
@@ -164,6 +164,18 @@ An accepted record is never edited. A decision that reverses or replaces an earl
 A decision that only builds on an earlier one supersedes nothing. Cite the earlier record under `Relates to`.
 
 A record this conversation wrote may still be revised in place when the conversation corrects it. Never create a `-v2` file.
+
+## The ADR index
+
+`adr.index.path` is a generated file listing every record, its title linking the file, then its status. It is git-ignored, and the repository's agent instructions send an agent to it before a design choice, so a record it lacks goes unread. Rewrite it after writing a record, and after giving an older one the status `Superseded`:
+
+```bash
+node "${CLAUDE_SKILL_DIR}/scripts/doc-check.js" index
+```
+
+Run it from the repository root. `${CLAUDE_SKILL_DIR}` is the folder this `SKILL.md` is in. If it reaches you unexpanded, write that folder's absolute path in its place. Where the start-of-turn hook is set up, it rewrites the index before every prompt as well.
+
+The index reads the status from a `Status:` field above the first section, from a section titled `Status`, or from `status:` in front matter. Keep it in one of those, as the built-in template does.
 
 ## Linking from ticket drafts
 

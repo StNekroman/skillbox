@@ -20,6 +20,23 @@ list of date, status, related documents and the record it supersedes. Each secti
 comment saying what it holds and whether it is mandatory, so the file doubles as a starting point
 for a repository's own `paths.adrTemplate`.
 
+## The ADR index
+
+Beside the records sits a generated index, `adr.index` in the config: every record, its title
+linking the file, then its status, so a superseded decision reads as one at a glance. Titles name
+the decision rather than the topic, so the list alone tells an agent which records bear on a
+choice. Unlike the SDD and knowledge-base indexes it lists no sections: records follow whatever
+template the repository uses, and have none to list.
+
+The block `to-sdd` and `to-kb` keep in `CLAUDE.md` or `AGENTS.md` sends every agent to the index
+before a design choice that other code will follow: follow the accepted records, and ask before
+going against one. That is how a decision made months ago reaches the agent about to undo it.
+
+The index is git-ignored and rebuilt, never edited: the skill rewrites it after writing a record,
+and the plugin's start-of-turn hook before every prompt. It runs the same `doc-check.js` as
+`to-sdd` and `to-kb`, a copy of which ships in this folder. On first use the init adds the key,
+git-ignores the file, and, where the block is already in place, proposes its update.
+
 ## The bar
 
 An ADR directory is useful only while every file in it matters, so the skill decides whether to
@@ -52,9 +69,9 @@ implements the decision, the draft's `References` gains a link to the record.
 
 | | |
 |---|---|
-| Config | `paths.adrRoot`; optionally `paths.adrTemplate`, and `jira.site` when a record cites an issue |
+| Config | `paths.adrRoot` and `adr.index`; optionally `paths.adrTemplate`, and `jira.site` when a record cites an issue |
 | Atlassian MCP | Optional; it arrives with the `skillbox-jira` addon. Used only to verify a cited issue key and read its summary |
-| Tools | Read, grep and `git log`. It never runs builds or tests |
+| Tools | Read, grep, `git log`, and the script, for the index and the agent block. It never runs builds or tests |
 
 ## Superseding
 
@@ -69,3 +86,5 @@ that says what it supersedes, and the old record's status becomes `Superseded` w
 | `SKILL.md` | the instructions |
 | `references/adr-template.md` | the built-in template, used when the repository sets none; each section documents itself |
 | `references/config.md` | the keys of `.skillbox/tickets.json` this skill reads, and the init that fills them |
+| `references/instructions-block.md` | the agent block's template, which the script reads; written by `npm run sync` |
+| `scripts/` | `doc-check.js`, the plugin's doc checker, here for `index` and `instructions`; written by `npm run sync` from the plugin's [`scripts/doc-check/`](../../scripts/doc-check/) |

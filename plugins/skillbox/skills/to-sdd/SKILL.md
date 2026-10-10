@@ -2,7 +2,7 @@
 name: to-sdd
 description: Keep the repository’s SDDs — the agent-written memory of how each feature area and each shared mechanism works — true. Corrects the sections a code change made wrong or a task found the code contradicts, adds sections for new architecture, creates an SDD for an area none covers, and keeps each file under the size limit. Writes nothing when the change is below the bar. Use at the end of a task that changed code, that found an SDD statement the code contradicts, or that worked out how an area works and the user agreed to record it; or when asked to create, update or migrate SDDs; do not use for knowledge-base pages, ADRs, tickets or code comments.
 metadata:
-  prompt-version: "2026-10-10.1"
+  prompt-version: "2026-10-10.2"
 ---
 
 # Keep the SDDs true
@@ -86,9 +86,9 @@ Some rules hold in many areas: every query is scoped by tenant, every handler si
 
 ## Configuration
 
-Read `.skillbox/tickets.json` under the repository root. It supplies `paths.sddRoot`, `sdd.maxLines` and `sdd.index`, and `paths.kbRoot`, `kb.maxLines` and `kb.index` for the knowledge base.
+Read `.skillbox/tickets.json` under the repository root. It supplies `paths.sddRoot`, `sdd.maxLines` and `sdd.index`, and `paths.kbRoot`, `kb.maxLines` and `kb.index` for the knowledge base. Where the repository keeps ADRs, it supplies `paths.adrRoot` and `adr.index` too.
 
-If the file is missing, or lacks any of those six keys, run the init in [the configuration reference](references/config.md), then carry on. The init writes the missing keys, and in the same run settles the repository's agent instructions, which name both stores. The script has no default limit, so the value in force is always the one in the file.
+If the file is missing, lacks any of those six keys, or has `paths.adrRoot` without `adr.index`, run the init in [the configuration reference](references/config.md), then carry on. The init writes the missing keys, and in the same run settles the repository's agent instructions, which name both stores. The script has no default limit, so the value in force is always the one in the file.
 
 A directory the user names in the request wins for this run. When the init is running anyway, that directory is also the answer to its question.
 
@@ -126,7 +126,7 @@ Design docs named another way, such as `SDD-001-mail.md` or a `design/` folder, 
 - **What it does not hold:** what the code already says plainly. That means field lists, signatures, copied code and step-by-step walkthroughs of one function.
 - **A rule another SDD holds is cited, not restated.** Say how this area applies it, and cite the section that holds it. See `A rule several areas follow`.
 - **An outside constraint lives in the knowledge base.** When code is built around a rule from outside — a provider's API, a marketplace policy, a law — state how the code applies it and cite the knowledge-base section that holds the rule, `KBDOCnnn§x.y`. Do not restate the rule.
-- **Link the ADR behind a design choice** when the repository has one. Put a relative path in the section that describes the choice. Leave the reasons to the ADR and do not restate them.
+- **Link the ADR behind a design choice** when the repository has one. Find it in the ADR index, `adr.index.path`: every record by its title, which names the decision, and its status. Link an accepted record, not a superseded one. Put a relative path in the section that describes the choice. Leave the reasons to the ADR and do not restate them.
 - **Write for an agent about to change this code.** Use short, dense sentences. Every sentence should be a fact that agent can act on.
 
 ## The script

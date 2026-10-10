@@ -3,7 +3,7 @@
 // are written by `npm run sync`; edit the source, never a copy.
 //
 // Checks and repairs the repository's docs — every type in TYPES of lib/doc-model.js — and runs
-// as the plugin's Stop hook.
+// as the plugin's Stop hook. Of the ADRs, it only keeps the index.
 // Usage: node doc-check.js <command> [ID ...] [--dry-run]
 //   check [ID ...]              every rule, references from code included; exit 1 on an error
 //   fix [ID ...]                regenerate indexes, breadcrumbs and pointers, set heading levels,
@@ -19,8 +19,8 @@
 //                               the KB sections that link them
 //   refs --to ID[§x.y]          everything that cites that doc or section
 //   next [PREFIX]               the id a new doc takes
-//   index                       rewrite each store's index file, <section>.index in the config,
-//                               where it no longer matches the docs
+//   index                       rewrite each store's index file, <section>.index in the config —
+//                               the ADRs' adr.index too — where it no longer matches the docs
 //   instructions [FILE ...]     bring the skills' block in CLAUDE.md, .claude/CLAUDE.md and
 //                               AGENTS.md up to date; add it to each FILE named that lacks it
 //   hook                       the Stop hook: reads the hook input on stdin, checks the docs
@@ -73,7 +73,8 @@ function findRoot(start) {
 }
 
 // One kind per doc type whose root the config names, in TYPES order: the type, where its docs
-// live, its line limit, and its index file.
+// live, its line limit, and its index file. Beside them, the ADRs when the config names their
+// root: where they live, the template to leave out of the list, and their index file.
 function loadConfig(root) {
   let raw;
   try {
@@ -81,51 +82,81 @@ function loadConfig(root) {
   } catch (e) {
     fail(`cannot read ${CONFIG_NAME}: ${e.message}`);
   }
+  // A path from the config, resolved and made relative again, so `./docs/sdd`, `docs\sdd/` and
+  // `docs/sdd` all compare equal to the paths git and the walk report, on every platform.
+  const pathAt = (key) => {
+    const v = raw && raw.paths && raw.paths[key];
+    const given = typeof v === 'string' ? v.trim().replace(/\\/g, '/') : '';
+    if (!given) return null;
+    const abs = path.resolve(root, given);
+    return { abs, rel: rel(root, abs) };
+  };
+  const section = (type) => (raw && raw[type.section]) || {};
+  const adrAt = pathAt(D.ADR.rootKey);
+  const adrRel = adrAt ? adrAt.rel : null;
   const kinds = [];
   for (const type of D.TYPES) {
-    const docRoot = raw && raw.paths && raw.paths[type.rootKey];
-    const own = raw && raw[type.section] ? raw[type.section] : {};
+    const at = pathAt(type.rootKey);
+    if (!at) continue;
+    const own = section(type);
     const maxLines = own.maxLines;
-    // Resolved and made relative again, so `./docs/sdd`, `docs\sdd/` and `docs/sdd` all compare
-    // equal to the paths git and the walk report, on every platform.
-    const given = typeof docRoot === 'string' ? docRoot.trim().replace(/\\/g, '/') : '';
-    if (!given) continue;
-    const abs = path.resolve(root, given);
-    const rootRel = rel(root, abs);
     kinds.push({
       type,
-      rootRel,
-      rootAbs: abs,
+      rootRel: at.rel,
+      rootAbs: at.abs,
       maxLines: Number.isInteger(maxLines) && maxLines > 0 ? maxLines : null,
       maxLinesRaw: maxLines,
-      index: indexConfig(root, type, rootRel, own.index),
+      index: indexConfig(root, type, at.rel, own.index, adrRel),
     });
   }
-  return { root, kinds };
+  const template = pathAt('adrTemplate');
+  const adr = adrAt && {
+    type: D.ADR,
+    rootRel: adrAt.rel,
+    rootAbs: adrAt.abs,
+    template: template ? template.rel : null,
+    index: indexConfig(root, D.ADR, adrAt.rel, section(D.ADR).index, adrRel),
+  };
+  return { root, kinds, adr };
 }
+
+// The stores a config names, each with its index: the doc types', then the ADRs'.
+const stores = (cfg) => (cfg.adr ? [...cfg.kinds, cfg.adr] : cfg.kinds);
 
 const INDEX_NAME = 'index.generated.md';
 const SUMMARY_MODES = ['paragraph', 'sentence', 'none'];
 
 // What <section>.index asks for: { rel, abs, summary, depth }, each key that is left out taking
 // its default; null without the key, which turns the index off; { error } when it is malformed.
-// The defaults are safe to have because the index is rebuilt from the docs, never edited.
-function indexConfig(root, type, rootRel, v) {
+// The defaults are safe to have because the index is rebuilt from the docs, never edited. The
+// ADR index takes only a path: it lists each record by its title and status, and nothing more.
+function indexConfig(root, type, rootRel, v, adrRel) {
   if (v === undefined || v === null || v === false) return null;
   const key = `${type.section}.index`;
   const bad = (msg) => ({ error: `${key} ${msg}` });
+  const fallback = `${rootRel ? `${rootRel}/` : ''}${INDEX_NAME}`;
   if (typeof v !== 'object' || Array.isArray(v)) {
-    return bad(`must be an object such as {"path": "${rootRel ? `${rootRel}/` : ''}${INDEX_NAME}", "summary": "paragraph", "depth": 0}`);
+    return bad(`must be an object such as {"path": "${fallback}"${type.record ? '' : ', "summary": "paragraph", "depth": 0'}}`);
   }
-  const given = v.path === undefined ? `${rootRel ? `${rootRel}/` : ''}${INDEX_NAME}` : v.path;
+  const given = v.path === undefined ? fallback : v.path;
   if (typeof given !== 'string' || !given.trim()) return bad(`has a path that is not a file name: ${JSON.stringify(v.path)}`);
   const abs = path.resolve(root, given.trim().replace(/\\/g, '/'));
   const p = rel(root, abs);
   if (!p || p === '..' || p.startsWith('../')) return bad(`has a path outside the repository: ${given}`);
-  // Inside a doc folder the file would be read as part of that doc.
+  // Inside a doc folder the file would be read as part of that doc, and beside the ADRs, named
+  // like one, it would be listed as a record.
   const segments = p.split('/');
-  if (segments.slice(0, -1).some((s) => D.TYPES.some((t) => t.dirRe.test(s))) || D.TYPES.some((t) => t.flatRe && t.flatRe.test(segments[segments.length - 1]))) {
+  const name = segments[segments.length - 1];
+  if (
+    segments.slice(0, -1).some((s) => D.TYPES.some((t) => t.dirRe.test(s))) ||
+    D.TYPES.some((t) => t.flatRe && t.flatRe.test(name)) ||
+    (adrRel !== null && segments.slice(0, -1).join('/') === adrRel && D.adrNumber(name) !== null)
+  ) {
     return bad(`has a path inside a doc folder, or named like a doc: ${p}`);
+  }
+  if (type.record) {
+    if (v.summary !== undefined || v.depth !== undefined) return bad('takes only a path: it lists each ADR by its title and status');
+    return { rel: p, abs, summary: null, depth: null };
   }
   const summary = v.summary === undefined ? 'paragraph' : v.summary;
   if (!SUMMARY_MODES.includes(summary)) return bad(`has summary ${JSON.stringify(v.summary)}; it takes "paragraph", "sentence" or "none"`);
@@ -135,15 +166,20 @@ function indexConfig(root, type, rootRel, v) {
 }
 
 const kindOf = (cfg, prefix) => cfg.kinds.find((k) => k.type.prefix === prefix) || null;
-const either = (words) => words.join(' or ');
+// "a or b", "a, b or c"; "a and b", "a, b and c".
+const joined = (words, word) => (words.length > 2 ? `${words.slice(0, -1).join(', ')} ${word} ${words[words.length - 1]}` : words.join(` ${word} `));
+const either = (words) => joined(words, 'or');
 // Why a reference to a type is not checked: the config names no root for it.
 const uncheckedWhy = (prefix) => `${CONFIG_NAME} has no paths.${D.typeOf(prefix).rootKey}`;
 
-function requireRoots(cfg) {
-  if (cfg.kinds.length) return;
-  const keys = either(D.TYPES.map((t) => `paths.${t.rootKey}`));
-  const skills = either(D.TYPES.map((t) => t.skill));
-  fail(`${CONFIG_NAME} has no ${keys}; the ${skills} skill's init sets ${D.TYPES.length === 1 ? 'it' : 'them'}`);
+// A command that works on the docs needs a doc type's root; one that works on the indexes is
+// content with the ADRs' too.
+function requireRoots(cfg, { adr = false } = {}) {
+  if (cfg.kinds.length || (adr && cfg.adr)) return;
+  const types = adr ? [...D.TYPES, D.ADR] : D.TYPES;
+  const keys = either(types.map((t) => `paths.${t.rootKey}`));
+  const skills = either(types.map((t) => t.skill));
+  fail(`${CONFIG_NAME} has no ${keys}; the ${skills} skill's init sets ${types.length === 1 ? 'it' : 'them'}`);
 }
 
 // No default: the init writes the limit into the config, so the number in force is visible there.
@@ -332,10 +368,10 @@ function select(cfg, docs, args) {
 
 // ---------------------------------------------------------------- the store index
 
-// The index files to write, one per path: two types that name the same file share it.
+// The index files to write, one per path: two stores that name the same file share it.
 function indexPlan(cfg) {
   const byPath = new Map();
-  for (const k of cfg.kinds) {
+  for (const k of stores(cfg)) {
     if (!k.index || k.index.error) continue;
     if (!byPath.has(k.index.rel)) byPath.set(k.index.rel, { rel: k.index.rel, abs: k.index.abs, kinds: [] });
     byPath.get(k.index.rel).kinds.push(k);
@@ -345,32 +381,49 @@ function indexPlan(cfg) {
 
 const indexFiles = (cfg) => new Set(indexPlan(cfg).map((f) => f.rel));
 
-// A link from an index file to a doc: its README.md, or the file itself for a single-file doc.
-// Parentheses are escaped: a folder name may hold them, and the link would end at the first )
+// Every record directly in paths.adrRoot, by number: each file named like one but the template
+// paths.adrTemplate names. [] without the root, or before it exists.
+function loadAdrs(cfg) {
+  const a = cfg.adr;
+  if (!a || !fs.existsSync(a.rootAbs)) return [];
+  const out = [];
+  for (const e of fs.readdirSync(a.rootAbs, { withFileTypes: true })) {
+    const num = e.isFile() ? D.adrNumber(e.name) : null;
+    if (num === null) continue;
+    const abs = path.join(a.rootAbs, e.name);
+    if (rel(cfg.root, abs) === a.template) continue;
+    out.push({ name: e.name, abs, num, lines: D.splitLines(fs.readFileSync(abs, 'utf8')).lines });
+  }
+  return out.sort((x, y) => x.num - y.num || x.name.localeCompare(y.name));
+}
+
+// A link from an index file to a doc: its README.md, or the file itself for a single-file doc or
+// a record. Parentheses are escaped: a name may hold them, and the link would end at the first )
 function indexLink(file, doc) {
   const target = doc.kind === 'folder' ? path.join(doc.abs, D.README) : doc.abs;
   return posix(path.relative(path.dirname(file.abs), target)).replace(/[()]/g, (c) => (c === '(' ? '%28' : '%29'));
 }
 
-function indexText(file, docs) {
+function indexText(file, docs, adrs) {
   const groups = file.kinds.map((k) => ({
     type: k.type,
     rootRel: k.rootRel,
-    entries: docs
-      .filter((d) => d.type === k.type)
-      .map((d) => D.indexEntry(d.model, { id: d.id, link: indexLink(file, d), summary: k.index.summary, depth: k.index.depth })),
+    entries: k.type.record
+      ? adrs.map((a) => D.adrEntry(a.lines, { name: a.name, link: indexLink(file, a) }))
+      : docs
+          .filter((d) => d.type === k.type)
+          .map((d) => D.indexEntry(d.model, { id: d.id, link: indexLink(file, d), summary: k.index.summary, depth: k.index.depth })),
   }));
   return D.renderStoreIndex(groups);
 }
 
-// "20 SDDs", "3 SDDs and 1 KB page".
-function indexCount(file, docs) {
-  return file.kinds
-    .map((k) => {
-      const n = docs.filter((d) => d.type === k.type).length;
-      return `${n} ${n === 1 ? k.type.noun : k.type.plural}`;
-    })
-    .join(' and ');
+// "20 SDDs", "3 SDDs and 1 KB page", "3 SDDs, 1 KB page and 2 ADRs".
+function indexCount(file, docs, adrs) {
+  const counts = file.kinds.map((k) => {
+    const n = k.type.record ? adrs.length : docs.filter((d) => d.type === k.type).length;
+    return `${n} ${n === 1 ? k.type.noun : k.type.plural}`;
+  });
+  return joined(counts, 'and');
 }
 
 // Writes the text through a temporary file renamed into place, so an agent reading the index at
@@ -389,12 +442,13 @@ function writeWhole(abs, text) {
 }
 
 // Rewrites each index file whose text no longer matches the docs: [{ rel, count, written }]. A
-// file whose doc roots are all missing is skipped: there is nothing to list yet.
+// file whose roots are all missing is skipped: there is nothing to list yet.
 function writeIndexes(cfg, docs) {
   const out = [];
+  const adrs = loadAdrs(cfg);
   for (const file of indexPlan(cfg)) {
     if (!file.kinds.some((k) => fs.existsSync(k.rootAbs))) continue;
-    const text = indexText(file, docs);
+    const text = indexText(file, docs, adrs);
     let old = null;
     try {
       old = fs.readFileSync(file.abs, 'utf8');
@@ -402,7 +456,7 @@ function writeIndexes(cfg, docs) {
       // Not written yet.
     }
     if (old !== text) writeWhole(file.abs, text);
-    out.push({ rel: file.rel, count: indexCount(file, docs), written: old !== text });
+    out.push({ rel: file.rel, count: indexCount(file, docs, adrs), written: old !== text });
   }
   return out;
 }
@@ -412,7 +466,7 @@ function writeIndexes(cfg, docs) {
 // goes stale wherever no hook rebuilds it.
 function indexIssues(cfg) {
   const issues = [];
-  for (const k of cfg.kinds) {
+  for (const k of stores(cfg)) {
     if (k.index && k.index.error) issues.push({ path: CONFIG_NAME, level: 'error', message: k.index.error, fixable: false });
   }
   for (const file of indexPlan(cfg)) {
@@ -953,12 +1007,12 @@ function cmdRefsTo(cfg, args) {
 
 // Rewrites the index files that no longer match the docs, and says which.
 function cmdIndex(cfg) {
-  requireRoots(cfg);
-  const bad = cfg.kinds.find((k) => k.index && k.index.error);
+  requireRoots(cfg, { adr: true });
+  const bad = stores(cfg).find((k) => k.index && k.index.error);
   if (bad) fail(`${CONFIG_NAME}: ${bad.index.error}`);
   if (!indexPlan(cfg).length) {
-    const keys = either(cfg.kinds.map((k) => `${k.type.section}.index`));
-    fail(`${CONFIG_NAME} has no ${keys}; the ${either(cfg.kinds.map((k) => k.type.skill))} skill's init sets it`);
+    const keys = either(stores(cfg).map((k) => `${k.type.section}.index`));
+    fail(`${CONFIG_NAME} has no ${keys}; the ${either(stores(cfg).map((k) => k.type.skill))} skill's init sets it`);
   }
   const written = writeIndexes(cfg, loadDocs(cfg));
   if (!written.length) console.log('No index written: no doc root exists yet.');
@@ -1017,10 +1071,11 @@ function blockTemplate() {
 }
 
 // The block as this repository should hold it, filled in from the config: { block, version }, or
-// { missing } naming the config keys it lacks, or { error } when the template is not there.
+// { missing } naming the config keys it lacks, or { error } when the template is not there. Both
+// doc types are required; the ADRs are not, and their lines stand only when their index does.
 function agentBlock(cfg) {
   const template = blockTemplate();
-  if (!template) return { error: `no references/${BLOCK_TEMPLATE} beside this script; run the copy inside the to-sdd or to-kb skill` };
+  if (!template) return { error: `no references/${BLOCK_TEMPLATE} beside this script; run the copy inside the to-sdd, to-kb or to-adr skill` };
   const values = {};
   const missing = [];
   for (const type of D.TYPES) {
@@ -1031,6 +1086,10 @@ function agentBlock(cfg) {
     else missing.push(`${type.section}.index`);
   }
   if (missing.length) return { missing };
+  if (cfg.adr && cfg.adr.index && !cfg.adr.index.error) {
+    values.adrRoot = cfg.adr.rootRel || '.';
+    values.adrIndex = cfg.adr.index.rel;
+  }
   return { block: D.renderAgentBlock(template, values), version: D.blockVersion(template) };
 }
 
@@ -1082,10 +1141,14 @@ function instructionIssues(cfg) {
     } else if (s.newer) {
       issues.push({ ...at, message: `the skills' agent block is v${s.found.version}, newer than this plugin's v${want.version}; update the plugin` });
     } else {
-      const what = s.found.version ? `v${s.found.version}` : 'from before the markers';
+      // Of the same version, the copy was edited, or the config changed what the block holds.
+      const what =
+        s.found.version === want.version
+          ? `differs from the one this plugin's v${want.version} writes for this config`
+          : `is ${s.found.version ? `v${s.found.version}` : 'from before the markers'}, not this plugin's v${want.version}`;
       issues.push({
         ...at,
-        message: `the skills' agent block is ${what}, not this plugin's v${want.version}; it shapes every session, so ask the user, and on yes run: node "${scriptPath()}" instructions`,
+        message: `the skills' agent block ${what}; it shapes every session, so ask the user, and on yes run: node "${scriptPath()}" instructions`,
       });
     }
   }
@@ -1112,7 +1175,7 @@ function printDiff(before, after) {
 // holds another copy, and adds it to each file named that holds none. A copy written by a newer
 // plugin is left alone, so teammates a version apart do not undo each other's update.
 function cmdInstructions(cfg, args, dryRun) {
-  const bad = cfg.kinds.find((k) => k.index && k.index.error);
+  const bad = stores(cfg).find((k) => k.index && k.index.error);
   if (bad) fail(`${CONFIG_NAME}: ${bad.index.error}`);
   const want = agentBlock(cfg);
   if (want.error) fail(want.error);
