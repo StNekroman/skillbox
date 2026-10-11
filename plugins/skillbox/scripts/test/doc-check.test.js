@@ -1270,6 +1270,34 @@ describe('instructions', () => {
     assert.deepEqual(blockWarnings(run(root, ['check']).stdout), []);
   });
 
+  test('the glossary lines stand only when the config names the glossary, and adding it makes the copy out of date', (t) => {
+    const root = setup(t, { 'AGENTS.md': BLOCK });
+    assert.doesNotMatch(BLOCK.slice(1).join('\n'), /glossary|_Avoid_/i, 'only the start marker names the skill');
+    write(root, { '.skillbox/tickets.json': JSON.stringify({ ...BOTH, paths: { ...BOTH.paths, glossary: 'docs/glossary.md' } }) });
+    assert.match(blockWarnings(run(root, ['check']).stdout).join('\n'), /^AGENTS\.md:1: warning: the skills' agent block differs from the one this plugin's v\S+ writes for this config; .* instructions$/);
+    assert.equal(run(root, ['instructions']).stdout, `AGENTS.md: rewritten, v${VERSION}.\n`);
+    const block = read(root, 'AGENTS.md');
+    assert.match(block, /^## SDDs, the glossary and the knowledge base$/m);
+    assert.match(block, /^`docs\/glossary\.md` is the \*\*glossary\*\*/m);
+    assert.match(block, /^- \*\*Before you write or discuss anything about the product's domain, read `docs\/glossary\.md`\*\*/m);
+    assert.match(block, /invoke the `to-glossary` skill/);
+    assert.doesNotMatch(block, /<glossary>|<!-- (?:if|else|end if)|ADR/);
+    assert.deepEqual(blockWarnings(run(root, ['check']).stdout), []);
+  });
+
+  test('with both the ADR index and the glossary, the heading names all four and both parts stand', (t) => {
+    const root = setup(t, { 'AGENTS.md': BLOCK });
+    const config = { ...BOTH, paths: { ...BOTH.paths, adrRoot: 'docs/adr', glossary: 'GLOSSARY.md' }, adr: { index: {} } };
+    write(root, { '.skillbox/tickets.json': JSON.stringify(config) });
+    assert.equal(run(root, ['instructions']).stdout, `AGENTS.md: rewritten, v${VERSION}.\n`);
+    const block = read(root, 'AGENTS.md');
+    assert.match(block, /^## SDDs, ADRs, the glossary and the knowledge base$/m);
+    assert.equal(block.match(/^## /gm).length, 1, block);
+    assert.match(block, /^Beside them, `docs\/adr\/` holds the \*\*ADRs\*\*/m);
+    assert.match(block, /^`GLOSSARY\.md` is the \*\*glossary\*\*/m);
+    assert.doesNotMatch(block, /<(?:adrRoot|adrIndex|glossary)>|<!-- (?:if|else|end if)/);
+  });
+
   test('needs both stores and their indexes in the config, and names the keys the init sets', (t) => {
     const root = repo(t, { 'AGENTS.md': ['## SDDs', '', '- Old.'] }, { useGit: false });
     const r = run(root, ['instructions']);
@@ -1279,7 +1307,7 @@ describe('instructions', () => {
   });
 
   test("each skill's copy of the script finds the template beside it", (t) => {
-    for (const skill of ['to-sdd', 'to-kb', 'to-adr']) {
+    for (const skill of ['to-sdd', 'to-kb', 'to-adr', 'to-glossary']) {
       const root = setup(t);
       const copy = path.join(__dirname, '..', '..', 'skills', skill, 'scripts', 'doc-check.js');
       const r = spawnSync(process.execPath, [copy, 'instructions', 'AGENTS.md'], { cwd: root, encoding: 'utf8', env: scriptEnv() });

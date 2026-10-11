@@ -1,5 +1,5 @@
 ---
-description: Bring the SDD, ADR and knowledge-base rules in this repository's CLAUDE.md and AGENTS.md up to date with the installed skills.
+description: Bring the SDD, ADR, glossary and knowledge-base rules in this repository's CLAUDE.md and AGENTS.md up to date with the installed skills.
 allowed-tools: Bash(node:*)
 argument-hint: "[--dry-run] [file ...]"
 ---
@@ -10,7 +10,7 @@ Run this from the repository root, with the arguments as typed:
 node "${CLAUDE_PLUGIN_ROOT}/scripts/doc-check/doc-check.js" instructions $ARGUMENTS
 ```
 
-It rewrites the block the `to-sdd`, `to-kb` and `to-adr` skills keep in `CLAUDE.md`, `.claude/CLAUDE.md` and `AGENTS.md` wherever a copy differs from the installed one, and adds the block to each file named that has none. `--dry-run` shows the lines that would go and come, and writes nothing.
+It rewrites the block the `to-sdd`, `to-kb`, `to-adr` and `to-glossary` skills keep in `CLAUDE.md`, `.claude/CLAUDE.md` and `AGENTS.md` wherever a copy differs from the installed one, and adds the block to each file named that has none. `--dry-run` shows the lines that would go and come, and writes nothing.
 
 The output is already visible to the user in the tool result. Add one sentence only when it calls for something:
 

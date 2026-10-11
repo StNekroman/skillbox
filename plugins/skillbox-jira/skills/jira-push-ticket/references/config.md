@@ -4,9 +4,9 @@ This skill reads one file: `.skillbox/tickets.json`, under the root of the repos
 in. It is committed, so a team shares one answer. It holds no secrets — the Atlassian MCP server
 owns authentication — so it is safe to commit.
 
-The file is shared. The `draft-ticket`, `to-adr`, `to-sdd`, `to-kb` and `jira-push-ticket` skills
-each read it and each fill only the keys they need, so whichever runs first creates it and the
-others add to it. Never remove or rewrite a key this skill does not use.
+The file is shared. The `draft-ticket`, `to-adr`, `to-glossary`, `to-sdd`, `to-kb` and
+`jira-push-ticket` skills each read it and each fill only the keys they need, so whichever runs
+first creates it and the others add to it. Never remove or rewrite a key this skill does not use.
 
 Everything Jira can be asked about is discovered at run time and never written here. What is
 recorded is only what Jira cannot tell you: which site and projects you meant, and how your

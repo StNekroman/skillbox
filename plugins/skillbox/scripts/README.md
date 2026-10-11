@@ -8,7 +8,8 @@ The doc checker behind the `to-sdd` and `to-kb` skills and both hooks has its on
 source here, in `doc-check/`, with the references both skills share. Each skill carries identical
 copies — the script in its own `scripts/`, the shared references in its `references/` — so that
 the skill folder works when it is installed on its own. `to-adr` carries the script too, for the
-ADR index and the agent block, and of the references only the block's template; `npm run sync` writes the copies from the
+ADR index and the agent block, and `to-glossary` for the agent block alone; of the references,
+each takes only the block's template. `npm run sync` writes the copies from the
 source, and `npm test` fails while one differs. Edit the source, never a copy. A skill runs its
 copy through `${CLAUDE_SKILL_DIR}`; `../hooks/hooks.json` runs the source through
 `${CLAUDE_PLUGIN_ROOT}`. The checker requires nothing from outside `doc-check/`.
@@ -254,8 +255,9 @@ outside them. The version is the template's `block-version`, bumped by hand with
 the block. A copy is rewritten when it differs and is not newer; a newer one is left alone, so
 teammates whose plugins are a version apart do not flip the file back and forth. A block from
 before the markers is found by its old heading and runs to the next heading of its level. Parts of
-the template stand only when the config has what they name — the ADR lines need `adr.index` — so a
-config that gains the key changes the block at the same version. `check`
+the template stand only when the config has what they name — the ADR lines need `adr.index`, the
+glossary lines `paths.glossary` — so a config that gains the key changes the block at the same
+version. `check`
 warns about each copy that differs, never about a file without one, and the hooks never write it:
 the file shapes every session, so it changes only when someone runs the command.
 

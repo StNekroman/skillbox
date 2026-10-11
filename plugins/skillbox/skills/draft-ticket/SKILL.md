@@ -2,7 +2,7 @@
 name: draft-ticket
 description: Write or update a ticket draft as a markdown file under the repository’s ticket-draft directory, using a fixed ticket structure. Use when chat research has settled enough to be flushed into one or more ticket files; do not use to create, edit, transition, or comment on items in an issue tracker.
 metadata:
-  prompt-version: "2026-10-01.1"
+  prompt-version: "2026-10-11.1"
 ---
 
 # Draft a Ticket
@@ -14,7 +14,8 @@ The output is a markdown file in this repository. It may later be copied into an
 ## Configuration
 
 Read `.skillbox/tickets.json` under the repository root before writing anything. It supplies
-`paths.draftRoot`, `paths.docRoots`, `domainNotes`, and `jira.site` for citing issues.
+`paths.draftRoot`, `paths.docRoots`, `domainNotes`, `paths.glossary`, and `jira.site` for citing
+issues.
 
 If it is not there, or it has no `paths.draftRoot` — `to-adr` may have created it first — run the
 init described in [the configuration reference](references/config.md), then carry on with the request.
@@ -40,6 +41,7 @@ Every statement about how the code behaves today must be checked against the liv
 - Do not carry a claim from the chat into the file without checking it. Research notes drift; the file is what a developer will trust.
 - Confirm that every repository named in the `Repos` field actually has to change. Drop the ones that do not.
 - When `domainNotes` is set, read it before writing about anything it covers. It records the traps a newcomer to this codebase falls into — two columns that are two names for the same thing, a field that means something other than its name. A ticket that gets one wrong sends the developer down the wrong path.
+- When `paths.glossary` is set and the file exists, read it before writing. Name every concept it holds by its term — in the title, the slug and the body — and never by a word its entry lists under `_Avoid_`, even when the conversation used that word. Code identifiers are cited as they are. A concept the ticket needs that the glossary lacks keeps the conversation's word; name it in the report as a term to settle. Never edit the glossary: the `to-glossary` skill keeps it.
 
 Read one existing ticket in the target folder before writing, to match its tone and depth.
 
@@ -300,6 +302,7 @@ Report to the user:
 - each path written, as a clickable relative link, including a sibling that only received a reverse relation entry;
 - the `Type`, `Severity` and `Complexity` assigned to each, so a wrong call can be corrected in one line;
 - the sections you left out where a reader might expect one, in a few words each, so the user can fill a real gap;
+- the domain words the tickets use that the glossary lacks, when the repository keeps one;
 - the open questions that remain, as a short list they can answer in chat.
 
 Do not paste the file body into chat. The user will open the file.

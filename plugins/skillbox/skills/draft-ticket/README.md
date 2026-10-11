@@ -30,7 +30,7 @@ issue is [jira-push-ticket](../../../skillbox-jira/skills/jira-push-ticket/READM
 
 | | |
 |---|---|
-| Config | `paths.draftRoot`, `domainNotes`, and `jira.site` for citing issues by URL |
+| Config | `paths.draftRoot`, `domainNotes`, `paths.glossary` to name concepts by their terms, and `jira.site` for citing issues by URL |
 | Atlassian MCP | Optional; it arrives with the `skillbox-jira` addon. Used only to verify a cited issue key and read its summary; without it the skill says in its report which keys are unverified |
 | Tools | Read and grep. It never runs builds, tests, migrations or lint |
 

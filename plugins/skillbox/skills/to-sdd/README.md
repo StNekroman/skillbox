@@ -103,7 +103,9 @@ version apart do not undo each other's update. A block from before the markers, 
 It does not write ADRs — that is [to-adr](../to-adr/README.md)'s job — but an SDD section links the
 ADR behind a design choice when there is one, found through the ADR index. Where the repository
 keeps ADRs, the init also adds that index, `adr.index`, and the block sends agents to it before a
-design choice. Nor does it edit knowledge-base pages: when a change
+design choice. Where the repository keeps a glossary, set up by
+[to-glossary](../to-glossary/README.md), the block also holds every session to its terms. Nor does
+it edit knowledge-base pages: when a change
 touches code that a page links, the report names that page's section and suggests `to-kb`.
 
 ## The script and the hooks

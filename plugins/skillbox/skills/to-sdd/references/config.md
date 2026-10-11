@@ -4,9 +4,10 @@
 being worked in. It is committed, so a team shares one answer. This reference is the same in both
 skills, and so is the init below: whichever of the two runs first sets up both stores.
 
-The file is shared. The `draft-ticket`, `to-adr`, `to-sdd`, `to-kb` and `jira-push-ticket` skills
-each read it and each fill only the keys they need, so whichever runs first creates it and the
-others add to it. Never remove or rewrite a key these skills do not use. The file is named for the
+The file is shared. The `draft-ticket`, `to-adr`, `to-glossary`, `to-sdd`, `to-kb` and
+`jira-push-ticket` skills each read it and each fill only the keys they need, so whichever runs
+first creates it and the others add to it. Never remove or rewrite a key these skills do not use.
+The file is named for the
 ticket skills; where SDDs and knowledge-base pages live are two more of the repository's document
 paths, and `jira-push-ticket` has to know them all to rewrite links inside them, so one file
 answers every path question.
@@ -135,7 +136,9 @@ Then run `doc-check.js index`, which writes them.
 
 An agent reads the SDDs before changing code, and the knowledge base before working with an
 outside service, only when the repository's always-loaded instructions tell it to. The same holds
-for the ADR index before a design choice: the block names it when the file has `adr.index`. Two files at
+for the ADR index before a design choice: the block names it when the file has `adr.index`. And
+for the glossary, the one name for each concept of the domain: the block holds every session to
+its terms when the file has `paths.glossary`, which the `to-glossary` skill sets. Two files at
 the repository root carry those: `CLAUDE.md`, which Claude Code reads, and `AGENTS.md`, which most
 other coding agents read. Claude Code reads `AGENTS.md` too, but only while there is no
 `CLAUDE.md`. Here `CLAUDE.md` means `CLAUDE.md` or `.claude/CLAUDE.md`.

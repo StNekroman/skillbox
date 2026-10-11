@@ -1,19 +1,29 @@
-<!-- block-version: 2026-10-10.2. Bump it with every change to the block below: a repository whose
+<!-- block-version: 2026-10-11.1. Bump it with every change to the block below: a repository whose
 copy is older is then told to update it, and one whose copy is newer is left alone.
 
 The block to-sdd and to-kb keep in a repository's always-loaded agent instructions, and to-adr
-brings up to date: CLAUDE.md, AGENTS.md, or both. `doc-check.js instructions` writes it there
-between two markers, without this comment, filling in <sddRoot> and <kbRoot> from paths.sddRoot and
-paths.kbRoot, and <sddIndex> and <kbIndex> from sdd.index.path and kb.index.path. The ADRs are
-optional: <adrRoot> and <adrIndex> come from paths.adrRoot and adr.index.path, and the lines
-between an "if adrIndex" comment line and its "end if" stand only when the config has both; the
-lines after its "else", only when it has not. The examples use letters, not digits, so the
-reference checker never mistakes them for real references. -->
+and to-glossary bring up to date: CLAUDE.md, AGENTS.md, or both. `doc-check.js instructions`
+writes it there between two markers, without this comment, filling in <sddRoot> and <kbRoot> from
+paths.sddRoot and paths.kbRoot, and <sddIndex> and <kbIndex> from sdd.index.path and
+kb.index.path. The ADRs are optional: <adrRoot> and <adrIndex> come from paths.adrRoot and
+adr.index.path, and the lines between an "if adrIndex" comment line and its "end if" stand only
+when the config has both; the lines after its "else", only when it has not. The glossary is
+optional too: <glossary> comes from paths.glossary, and the "if glossary" lines stand only when
+the config has it. The examples use letters, not digits, so the reference checker never mistakes
+them for real references. -->
 
 <!-- if adrIndex -->
+<!-- if glossary -->
+## SDDs, ADRs, the glossary and the knowledge base
+<!-- else -->
 ## SDDs, ADRs and the knowledge base
+<!-- end if -->
+<!-- else -->
+<!-- if glossary -->
+## SDDs, the glossary and the knowledge base
 <!-- else -->
 ## SDDs and the knowledge base
+<!-- end if -->
 <!-- end if -->
 
 This repository keeps two stores of docs written by agents for agents, one folder per subject:
@@ -26,6 +36,11 @@ This repository keeps two stores of docs written by agents for agents, one folde
 
 Beside them, `<adrRoot>/` holds the **ADRs**: one file per architecture decision, with the
 alternatives weighed and why they lost.
+<!-- end if -->
+<!-- if glossary -->
+
+`<glossary>` is the **glossary**: the one name this project uses for each concept of its domain,
+what the name means, and the words not to use for it.
 <!-- end if -->
 
 - **Before you change code in an area, read its SDD.** Find it in `<sddIndex>`, which lists every
@@ -68,3 +83,19 @@ alternatives weighed and why they lost.
 - **Edit SDDs only through `to-sdd`, and knowledge-base pages only through `to-kb`.**
 - **Cite a section in the full form, every time:** `SDDnnn§a.b, SDDnnn§c`, never `SDDnnn§a.b/§c`,
   and never by a file path.
+<!-- if glossary -->
+- **Before you write or discuss anything about the product's domain, read `<glossary>`**: a spec,
+  a ticket, a design, a doc, a name in code, or a reply that proposes one of these. Once a session
+  is enough. When the file is missing, no term is settled yet.
+- **Call each concept by its glossary term**, in replies, docs and new code, and never by a word
+  its entry lists under `_Avoid_`. Never give a concept a second name. Existing code may still use
+  an avoided word: quote its identifiers as they are, and name the concept by its term.
+- **When you need a name for a domain concept the glossary lacks, propose one and ask before you
+  use it.** A word you coin and keep using becomes the project's term without anyone choosing it.
+- **When the user says a word the glossary avoids, or uses a term in another sense, say so and ask
+  which they mean** before you go on, once per word. Their answer settles it.
+- **When the user settles a term** — picks one of two words, renames or narrows a term, or names a
+  new concept and keeps the name — invoke the `to-glossary` skill when the task is done, or
+  sooner, before a ticket, a spec or a doc uses the term. Edit `<glossary>` only through
+  `to-glossary`.
+<!-- end if -->

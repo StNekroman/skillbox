@@ -47,7 +47,8 @@ research that took real work. What a service's own docs state plainly is never p
 agent asks once per task. The second needs the
 repository's agent instructions to say so: on first use the skill runs the shared init, which sets
 up both stores and proposes one block for `CLAUDE.md` or `AGENTS.md` covering SDDs and the knowledge
-base, and the ADR index where the repository keeps ADRs. It writes that block only once you confirm. The init and the block are the same in `to-sdd`.
+base, the ADR index where the repository keeps ADRs, and the glossary where it keeps one. It
+writes that block only once you confirm. The init and the block are the same in `to-sdd`.
 
 A page that links our code is not forgotten when that code changes: `to-sdd` runs
 `refs --changed`, which lists every knowledge-base section linking a changed file, and reports them

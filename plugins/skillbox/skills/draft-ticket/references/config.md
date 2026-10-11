@@ -3,9 +3,9 @@
 This skill reads one file: `.skillbox/tickets.json`, under the root of the repository being worked
 in. It is committed, so a team shares one answer.
 
-The file is shared. The `draft-ticket`, `to-adr`, `to-sdd`, `to-kb` and `jira-push-ticket` skills
-each read it and each fill only the keys they need, so whichever runs first creates it and the
-others add to it. Never remove or rewrite a key this skill does not use.
+The file is shared. The `draft-ticket`, `to-adr`, `to-glossary`, `to-sdd`, `to-kb` and
+`jira-push-ticket` skills each read it and each fill only the keys they need, so whichever runs
+first creates it and the others add to it. Never remove or rewrite a key this skill does not use.
 
 ## The keys this skill uses
 
@@ -17,7 +17,8 @@ others add to it. Never remove or rewrite a key this skill does not use.
   },
   "paths": {
     "draftRoot": "devdoc/proposed-tickets",
-    "docRoots": ["devdoc/architecture-decisions", "devdoc/kb", "devdoc/sdd", "devdoc/specs", "devdoc/tech"]
+    "docRoots": ["devdoc/architecture-decisions", "devdoc/kb", "devdoc/sdd", "devdoc/specs", "devdoc/tech"],
+    "glossary": "devdoc/glossary.md"
   },
   "domainNotes": ".github/copilot-instructions.md"
 }
@@ -28,6 +29,7 @@ others add to it. Never remove or rewrite a key this skill does not use.
 | `paths.draftRoot` | Where drafts live, relative to the repository root |
 | `paths.docRoots` | Directories searched for inbound references to a draft when it is pushed to a tracker. ADRs, specs, tech docs — whatever this repository has. Includes `paths.adrRoot`, `paths.sddRoot` and `paths.kbRoot` whenever they are set |
 | `domainNotes` | Optional. A repository document holding domain gotchas a drafter must read before writing about them. Omit the key when there is none |
+| `paths.glossary` | Optional. The glossary: one name for each concept of the domain, and the words not to use for it. The `to-glossary` skill sets the key and keeps the file; this skill only reads it, and never asks for it |
 | `jira.site` | Optional. Site URL, used to write `<site>/browse/<KEY>` links |
 
 The rest of the `jira` block belongs to `jira-push-ticket`. It may be absent in a repository that

@@ -1575,7 +1575,7 @@ function renderAgentBlock(template, values) {
   while (lines.length && isBlank(lines[lines.length - 1])) lines.pop();
   const filled = lines.map((l) => l.replace(/<([A-Za-z]+)>/g, (whole, name) => (Object.hasOwn(values, name) ? values[name] : whole)));
   const start =
-    `${BLOCK_START} v${blockVersion(template)}. The to-sdd, to-kb and to-adr skills keep this block: their ` +
+    `${BLOCK_START} v${blockVersion(template)}. The to-sdd, to-kb, to-adr and to-glossary skills keep this block: their ` +
     'doc-check.js instructions rewrites it down to skillbox:end, so keep your own rules outside it. -->';
   return [start, ...filled, BLOCK_END];
 }

@@ -15,12 +15,14 @@ const fs = require('fs');
 const path = require('path');
 
 const SOURCE = 'plugins/skillbox/scripts/doc-check';
-// to-adr runs the checker only for the ADR index and the agent block, and keeps its own config.md,
-// so of the references it takes only the block's template, which the script reads.
+// to-adr runs the checker only for the ADR index and the agent block, and to-glossary only for the
+// agent block. Each keeps its own config.md, so of the references it takes only the block's
+// template, which the script reads.
 const SKILLS = [
   'plugins/skillbox/skills/to-sdd',
   'plugins/skillbox/skills/to-kb',
   { dir: 'plugins/skillbox/skills/to-adr', refs: ['instructions-block.md'] },
+  { dir: 'plugins/skillbox/skills/to-glossary', refs: ['instructions-block.md'] },
 ];
 const SHARED_REFS = 'references';
 

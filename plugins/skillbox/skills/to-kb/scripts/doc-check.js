@@ -74,7 +74,8 @@ function findRoot(start) {
 
 // One kind per doc type whose root the config names, in TYPES order: the type, where its docs
 // live, its line limit, and its index file. Beside them, the ADRs when the config names their
-// root: where they live, the template to leave out of the list, and their index file.
+// root: where they live, the template to leave out of the list, and their index file. And the
+// glossary when the config names it, which only the agent block mentions.
 function loadConfig(root) {
   let raw;
   try {
@@ -117,7 +118,7 @@ function loadConfig(root) {
     template: template ? template.rel : null,
     index: indexConfig(root, D.ADR, adrAt.rel, section(D.ADR).index, adrRel),
   };
-  return { root, kinds, adr };
+  return { root, kinds, adr, glossary: pathAt('glossary') };
 }
 
 // The stores a config names, each with its index: the doc types', then the ADRs'.
@@ -1072,10 +1073,11 @@ function blockTemplate() {
 
 // The block as this repository should hold it, filled in from the config: { block, version }, or
 // { missing } naming the config keys it lacks, or { error } when the template is not there. Both
-// doc types are required; the ADRs are not, and their lines stand only when their index does.
+// doc types are required; the ADRs are not, and their lines stand only when their index does; nor
+// is the glossary, whose lines stand when the config names it.
 function agentBlock(cfg) {
   const template = blockTemplate();
-  if (!template) return { error: `no references/${BLOCK_TEMPLATE} beside this script; run the copy inside the to-sdd, to-kb or to-adr skill` };
+  if (!template) return { error: `no references/${BLOCK_TEMPLATE} beside this script; run the copy inside the to-sdd, to-kb, to-adr or to-glossary skill` };
   const values = {};
   const missing = [];
   for (const type of D.TYPES) {
@@ -1090,6 +1092,7 @@ function agentBlock(cfg) {
     values.adrRoot = cfg.adr.rootRel || '.';
     values.adrIndex = cfg.adr.index.rel;
   }
+  if (cfg.glossary && cfg.glossary.rel) values.glossary = cfg.glossary.rel;
   return { block: D.renderAgentBlock(template, values), version: D.blockVersion(template) };
 }
 

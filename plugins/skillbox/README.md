@@ -2,9 +2,9 @@
 
 The core of the family: everything here needs nothing beyond Node. Fork a Claude Code conversation
 into a new session truncated at a chosen point and navigate the resulting tree; write settled
-research into ticket draft files, settled architecture decisions into ADRs, keep the repository's
-SDDs true as the code changes, and keep a knowledge base about the world outside the code beside
-them.
+research into ticket draft files, settled architecture decisions into ADRs and settled domain terms
+into a glossary, keep the repository's SDDs true as the code changes, and keep a knowledge base
+about the world outside the code beside them.
 
 ## Components
 
@@ -12,9 +12,10 @@ them.
 | ----------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------- |
 | `/skillbox:fork-at`                             | command | Fork the conversation at a chosen turn                                                                  |
 | `/skillbox:fork-tree`                           | command | Show where this session sits among its forks                                                            |
-| `/skillbox:update-instructions`                 | command | Bring the SDD, ADR and knowledge-base block in `CLAUDE.md` and `AGENTS.md` up to date with the installed skills |
+| `/skillbox:update-instructions`                 | command | Bring the SDD, ADR, glossary and knowledge-base block in `CLAUDE.md` and `AGENTS.md` up to date with the installed skills |
 | [`draft-ticket`](skills/draft-ticket/README.md) | skill   | Writes one markdown file per deliverable, in a fixed ticket structure, every claim verified             |
 | [`to-adr`](skills/to-adr/README.md)             | skill   | Records a settled architecture decision as an ADR — and writes nothing when there is none               |
+| [`to-glossary`](skills/to-glossary/README.md)   | skill   | Records a settled domain term in the glossary, with the words not to use for it — and only what you settled |
 | [`to-sdd`](skills/to-sdd/README.md)             | skill   | After a code change, corrects or extends the SDDs it touched — and writes nothing below the bar         |
 | [`to-kb`](skills/to-kb/README.md)               | skill   | Adds research and outside facts to the knowledge base, each with its source — and only what you confirm |
 | `hooks/hooks.json`                              | hooks   | Stop hook: checks the SDDs and knowledge-base pages changed in a turn before the turn ends. Start-of-turn hook: keeps each store's index current |
@@ -113,6 +114,22 @@ its title linking the file, then its status — no sections, since records follo
 own template. The block in `CLAUDE.md` or `AGENTS.md` sends agents to it before a design choice
 other code will follow, so an accepted decision is found before it is undone, not after.
 
+## to-glossary
+
+The glossary holds one name for each concept of the product's domain, what it means, and the
+words not to use for it, in one file under `paths.glossary`. It is there to stop names drifting:
+without it, each session reaches for a new word for a thing that already has one, and you spend
+turns getting back on the same page.
+
+Reading it is always on. Once the config names the glossary, the block in `CLAUDE.md` or
+`AGENTS.md` tells every session to read it before working on the domain, to use its terms and never
+the words it avoids, to ask before coining a name, and to say so when you use an avoided word.
+Writing it is the skill's job alone, when you settle a term: pick one of two words, rename or
+narrow one, or name a new concept. A word an agent used and nobody remarked on is never recorded.
+The glossary holds no implementation, so it works as well for a design that exists only as specs
+and tickets. `draft-ticket` reads it too, and names each concept by its term.
+[The skill's README](skills/to-glossary/README.md) has the format and the bar.
+
 ## to-sdd
 
 An SDD is agent-written memory of one feature area or shared mechanism, committed to the
@@ -200,7 +217,8 @@ installed on its own. The whole file:
     "adrTemplate": "devdoc/architecture-decisions/template.md",
     "sddRoot": "devdoc/sdd",
     "kbRoot": "devdoc/kb",
-    "docRoots": ["devdoc/architecture-decisions", "devdoc/kb", "devdoc/sdd", "devdoc/specs", "devdoc/tech"]
+    "docRoots": ["devdoc/architecture-decisions", "devdoc/kb", "devdoc/sdd", "devdoc/specs", "devdoc/tech"],
+    "glossary": "devdoc/glossary.md"
   },
   "sdd": {
     "maxLines": 500,
@@ -225,6 +243,7 @@ installed on its own. The whole file:
 | `paths.kbRoot`, `kb.maxLines`              | `to-sdd` or `to-kb`, one shared init                           | `to-kb`, the shared script, the Stop hook    |
 | `sdd.index`, `kb.index`                    | `to-sdd` or `to-kb`, one shared init                           | the shared script, the start-of-turn hook    |
 | `adr.index`                                | `to-adr`, or the `to-sdd` and `to-kb` init                     | the shared script, the start-of-turn hook, `to-sdd`, `to-adr` |
+| `paths.glossary`                           | `to-glossary`                                                  | `to-glossary`, `draft-ticket`, the shared script |
 | `paths.docRoots`                           | `draft-ticket`; `to-adr`, `to-sdd` and `to-kb` add their roots | `jira-push-ticket`                           |
 | `domainNotes`                              | you, by hand                                                   | `draft-ticket`                               |
 | `jira.site`                                | whichever skill first cites or pushes an issue                 | `draft-ticket`, `to-adr`, `jira-push-ticket` |
@@ -232,6 +251,7 @@ installed on its own. The whole file:
 
 What each key means, and the init that fills it, is in the skill's own reference:
 [draft-ticket](skills/draft-ticket/references/config.md), [to-adr](skills/to-adr/references/config.md),
+[to-glossary](skills/to-glossary/references/config.md),
 [to-sdd and to-kb](skills/to-sdd/references/config.md) (one file, the same in both), and
 [jira-push-ticket](../skillbox-jira/skills/jira-push-ticket/references/config.md) in the addon.
 Commit the file. Ignore `.skillbox/cache/`, the place for anything derived or per-developer, and the

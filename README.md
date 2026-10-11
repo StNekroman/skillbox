@@ -15,7 +15,7 @@ MCP server costs nothing until used — so an addon is a unit someone can declin
 
 | Plugin                                               | What it does                                                                                                                                             | Components                                                                    |
 | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| [**skillbox**](plugins/skillbox/README.md)           | Core. Fork a conversation at a chosen point, navigate the fork tree, draft tickets and ADRs as markdown, keep SDDs true and a knowledge base beside them | 2 commands, 4 skills, 2 hooks, [5 scripts](plugins/skillbox/scripts/README.md) |
+| [**skillbox**](plugins/skillbox/README.md)           | Core. Fork a conversation at a chosen point, navigate the fork tree, draft tickets and ADRs as markdown, keep a glossary of domain terms, keep SDDs true and a knowledge base beside them | 3 commands, 5 skills, 2 hooks, [5 scripts](plugins/skillbox/scripts/README.md) |
 | [**skillbox-jira**](plugins/skillbox-jira/README.md) | Jira addon. Push a ticket draft to Jira as an issue                                                                                                      | 1 skill, 1 MCP server. Depends on `skillbox`                                  |
 
 Drilling in:
@@ -24,9 +24,10 @@ Drilling in:
 | ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
 | [`skillbox:fork-at`](plugins/skillbox/README.md#fork-at)                                    | Fork the conversation at a chosen turn; the parent is untouched                     |
 | [`skillbox:fork-tree`](plugins/skillbox/README.md#fork-tree)                                | Show where this session sits among its forks                                        |
-| [`skillbox:update-instructions`](plugins/skillbox/README.md#update-instructions)            | The SDD, ADR and knowledge-base block in `CLAUDE.md` and `AGENTS.md` catches up with the plugin |
+| [`skillbox:update-instructions`](plugins/skillbox/README.md#update-instructions)            | The SDD, ADR, glossary and knowledge-base block in `CLAUDE.md` and `AGENTS.md` catches up with the plugin |
 | [`skillbox:draft-ticket`](plugins/skillbox/skills/draft-ticket/README.md)                   | Settled research becomes one ticket file per deliverable                            |
 | [`skillbox:to-adr`](plugins/skillbox/skills/to-adr/README.md)                               | A settled architecture decision becomes an ADR; anything less, none                 |
+| [`skillbox:to-glossary`](plugins/skillbox/skills/to-glossary/README.md)                     | A settled domain term enters the glossary, and every session is held to it          |
 | [`skillbox:to-sdd`](plugins/skillbox/skills/to-sdd/README.md)                               | The SDDs are made true again after a code change, or when one is found wrong        |
 | [`skillbox:to-kb`](plugins/skillbox/skills/to-kb/README.md)                                 | Research and outside facts worth keeping become knowledge-base pages, sources cited |
 | [`skillbox-jira:jira-push-ticket`](plugins/skillbox-jira/skills/jira-push-ticket/README.md) | A draft becomes a real issue, and the repository is left consistent                 |
@@ -58,7 +59,8 @@ claude plugin marketplace add /path/to/your/clone
 ```
 
 Commands and skills arrive namespaced: `/skillbox:fork-at`, `skillbox:draft-ticket`,
-`skillbox:to-adr`, `skillbox:to-sdd`, `skillbox:to-kb`, `skillbox-jira:jira-push-ticket`.
+`skillbox:to-adr`, `skillbox:to-glossary`, `skillbox:to-sdd`, `skillbox:to-kb`,
+`skillbox-jira:jira-push-ticket`.
 
 To iterate on a plugin without installing it, load it for a single session:
 
@@ -68,7 +70,7 @@ claude --plugin-dir /path/to/your/clone/plugins/skillbox
 
 ### Other agents
 
-The five skills are plain `SKILL.md` folders and carry everything they need, so an agent that reads
+The six skills are plain `SKILL.md` folders and carry everything they need, so an agent that reads
 that format can use one copied into its skills directory. The commands are Claude Code only: they
 drive Claude Code's own sessions. The plugin sets up its two hooks only in Claude Code — the Stop
 hook that checks the docs and the start-of-turn hook that keeps their indexes current — but its
