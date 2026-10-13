@@ -15,7 +15,7 @@ MCP server costs nothing until used — so an addon is a unit someone can declin
 
 | Plugin                                               | What it does                                                                                                                                             | Components                                                                    |
 | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| [**skillbox**](plugins/skillbox/README.md)           | Core. Fork a conversation at a chosen point, navigate the fork tree, draft tickets and ADRs as markdown, keep a glossary of domain terms, keep SDDs true and a knowledge base beside them | 3 commands, 5 skills, 2 hooks, [5 scripts](plugins/skillbox/scripts/README.md) |
+| [**skillbox**](plugins/skillbox/README.md)           | Core. Fork a conversation at a chosen point, navigate the fork tree, draft tickets and ADRs as markdown, keep a glossary of domain terms, keep SDDs true and a knowledge base beside them, profile a slow Node.js path | 3 commands, 6 skills, 2 hooks, [5 scripts](plugins/skillbox/scripts/README.md) |
 | [**skillbox-jira**](plugins/skillbox-jira/README.md) | Jira addon. Push a ticket draft to Jira as an issue                                                                                                      | 1 skill, 1 MCP server. Depends on `skillbox`                                  |
 
 Drilling in:
@@ -30,6 +30,7 @@ Drilling in:
 | [`skillbox:to-glossary`](plugins/skillbox/skills/to-glossary/README.md)                     | A settled domain term enters the glossary, and every session is held to it          |
 | [`skillbox:to-sdd`](plugins/skillbox/skills/to-sdd/README.md)                               | The SDDs are made true again after a code change, or when one is found wrong        |
 | [`skillbox:to-kb`](plugins/skillbox/skills/to-kb/README.md)                                 | Research and outside facts worth keeping become knowledge-base pages, sources cited |
+| [`skillbox:profile-node`](plugins/skillbox/skills/profile-node/README.md)                   | A slow Node.js path is measured, not guessed: CPU or waiting first, then where the time goes |
 | [`skillbox-jira:jira-push-ticket`](plugins/skillbox-jira/skills/jira-push-ticket/README.md) | A draft becomes a real issue, and the repository is left consistent                 |
 
 **Documentation convention.** A `SKILL.md` or a command's `.md` is written for the model — imperative
@@ -60,7 +61,7 @@ claude plugin marketplace add /path/to/your/clone
 
 Commands and skills arrive namespaced: `/skillbox:fork-at`, `skillbox:draft-ticket`,
 `skillbox:to-adr`, `skillbox:to-glossary`, `skillbox:to-sdd`, `skillbox:to-kb`,
-`skillbox-jira:jira-push-ticket`.
+`skillbox:profile-node`, `skillbox-jira:jira-push-ticket`.
 
 To iterate on a plugin without installing it, load it for a single session:
 
@@ -82,6 +83,7 @@ themselves; only the end-of-turn check, and an index current after a pull, are m
 ## Requirements
 
 `skillbox` shells out to Node. Developed against v22; anything with `crypto.randomUUID` will do. Its
-Stop hook also needs git.
+Stop hook also needs git. `profile-node` records with Node 22 or newer, for the built-in WebSocket
+client.
 
 `skillbox-jira` needs the Atlassian MCP server, which it ships itself.

@@ -1,7 +1,7 @@
 {
   "name": "skillbox",
-  "version": "2.8.0",
-  "description": "The dependency-free core of the skillbox family. Fork a Claude Code conversation into a new session truncated at a chosen point and navigate the resulting fork tree; write settled research into ticket draft files using a fixed ticket structure; record settled architecture decisions as ADRs, and settled domain terms in a glossary every session is held to; keep the repository’s SDDs true as the code changes, and add research and outside facts to a knowledge base beside them, with a Stop hook that checks both and a start-of-turn hook that keeps an index of each, and of the ADRs, current. Needs only Node.",
+  "version": "2.9.0",
+  "description": "The dependency-free core of the skillbox family. Fork a Claude Code conversation into a new session truncated at a chosen point and navigate the resulting fork tree; write settled research into ticket draft files using a fixed ticket structure; record settled architecture decisions as ADRs, and settled domain terms in a glossary every session is held to; keep the repository’s SDDs true as the code changes, and add research and outside facts to a knowledge base beside them, with a Stop hook that checks both and a start-of-turn hook that keeps an index of each, and of the ADRs, current; find where a slow Node.js path spends its time, through a CPU profile recorded over the inspector port. Needs only Node.",
   "author": {
     "name": "Roman Nefedov",
     "email": "stnekroman@gmail.com"
@@ -21,6 +21,9 @@
     "sdd",
     "design-docs",
     "knowledge-base",
+    "profiling",
+    "performance",
+    "nodejs",
     "productivity"
   ]
 }

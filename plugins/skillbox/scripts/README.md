@@ -74,6 +74,7 @@ No dependencies — Node's built-in runner, 21 or later. From the repository roo
 npm test            # everything
 npm run test:fork   # fork-at, fork-tree and their CLI
 npm run test:doc    # the doc checker, and that the skills' copies match it
+npm run test:profile  # the profile-node skill's scripts
 ```
 
 The root `package.json` holds only these scripts; nothing needs installing. Each runs
@@ -97,6 +98,13 @@ throwaway git repositories — as the skill runs it, and as the Stop hook does, 
 stdin. Tests that need git are skipped where it is not installed. `../../../tools/test/` checks
 that every skill's copy matches the source, and that the sync tool finds and repairs each kind of
 drift.
+
+The `profile-node` skill keeps its scripts in its own folder, since nothing else uses them; their
+tests are here with the rest. `profile-node-model.test.js` covers the source-map lookup, the
+profile model and the report on synthetic profiles. `profile-node-cli.test.js` runs both scripts
+end to end: it starts real Node processes with their inspector on a free port and records them, so
+those tests are skipped on a Node without the built-in WebSocket, and the IPv6 one where `[::1]`
+cannot be bound.
 
 ## The doc checker
 
