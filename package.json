@@ -9,6 +9,7 @@
     "test": "node --test \"plugins/skillbox/scripts/test/*.test.js\" \"tools/test/*.test.js\"",
     "test:fork": "node --test \"plugins/skillbox/scripts/test/{cli,fork-*}.test.js\"",
     "test:doc": "node --test \"plugins/skillbox/scripts/test/doc-*.test.js\" \"tools/test/*.test.js\"",
+    "test:profile": "node --test \"plugins/skillbox/scripts/test/profile-node-*.test.js\"",
     "sync": "node tools/sync-doc-check.js",
     "sync:check": "node tools/sync-doc-check.js --check"
   }

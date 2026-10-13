@@ -4,7 +4,7 @@ The core of the family: everything here needs nothing beyond Node. Fork a Claude
 into a new session truncated at a chosen point and navigate the resulting tree; write settled
 research into ticket draft files, settled architecture decisions into ADRs, keep the repository's
 SDDs true as the code changes, and keep a knowledge base about the world outside the code beside
-them.
+them; and find where a slow Node.js path spends its time.
 
 ## Components
 
@@ -17,6 +17,7 @@ them.
 | [`to-adr`](skills/to-adr/README.md)             | skill   | Records a settled architecture decision as an ADR — and writes nothing when there is none               |
 | [`to-sdd`](skills/to-sdd/README.md)             | skill   | After a code change, corrects or extends the SDDs it touched — and writes nothing below the bar         |
 | [`to-kb`](skills/to-kb/README.md)               | skill   | Adds research and outside facts to the knowledge base, each with its source — and only what you confirm |
+| [`profile-node`](skills/profile-node/README.md) | skill   | Profiles a running Node process through its inspector port while a workload runs, and reads the profile |
 | `hooks/hooks.json`                              | hooks   | Stop hook: checks the SDDs and knowledge-base pages changed in a turn before the turn ends. Start-of-turn hook: keeps each store's index current |
 | [`scripts/`](scripts/README.md)                 | node    | The fork implementation, the doc checker’s source, and the tests of every script                        |
 
@@ -159,6 +160,19 @@ about. When that code changes, `to-sdd` reports the page's section, so it is loo
 first sets up both stores. [The skill's README](skills/to-kb/README.md) has what belongs and how
 sources are kept.
 
+## profile-node
+
+A slow Node.js path is measured, not guessed. The skill attaches to a running process through its
+inspector port, records a CPU profile while a workload repeats the slow path, and reads the profile
+as a markdown report. The first thing the report settles is whether the path is CPU-bound at all:
+a request that waits on a database shows a mostly idle main thread, and the skill then times the
+awaits instead of optimizing JavaScript. Then it shows busy time by origin, the hottest functions,
+and the call paths into them up to the first frame of your own code, mapped through source maps.
+It changes one thing at a time and compares against a baseline taken under the same conditions.
+
+It needs no MCP server and no install: two scripts in the skill folder, and Node. It reads no
+configuration. [The skill's README](skills/profile-node/README.md) has the report and the limits.
+
 ## update-instructions
 
 ```
@@ -240,7 +254,8 @@ index files, which the init adds to `.gitignore`.
 ## Requirements
 
 Node. Developed against v22; anything with `crypto.randomUUID` will do. The Stop hook and
-`doc-check.js refs --changed` also need git.
+`doc-check.js refs --changed` also need git. `profile-node` records with Node 22 or newer, for the
+built-in WebSocket client.
 
 The fork commands drive Claude Code's own session store and CLI, including two undocumented flags.
 See [scripts/README.md](scripts/README.md#version-coupling) for what an upgrade might break.

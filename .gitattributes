@@ -3,4 +3,6 @@
 * text=auto eol=lf
 
 # Written by `npm run sync` from plugins/skillbox/scripts/doc-check/; collapsed in diffs.
-plugins/skillbox/skills/*/scripts/** linguist-generated=true
+plugins/skillbox/skills/to-adr/scripts/** linguist-generated=true
+plugins/skillbox/skills/to-kb/scripts/** linguist-generated=true
+plugins/skillbox/skills/to-sdd/scripts/** linguist-generated=true
