@@ -86,7 +86,7 @@ Some rules hold in many areas: every query is scoped by tenant, every handler si
 
 ## Configuration
 
-Read `.skillbox/tickets.json` under the repository root. It supplies `paths.sddRoot`, `sdd.maxLines` and `sdd.index`, and `paths.kbRoot`, `kb.maxLines` and `kb.index` for the knowledge base. Where the repository keeps ADRs, it supplies `paths.adrRoot` and `adr.index` too.
+Read `.skillbox/tickets.json` under the repository root. It supplies `paths.sddRoot`, `sdd.maxChars` and `sdd.index`, and `paths.kbRoot`, `kb.maxChars` and `kb.index` for the knowledge base. Where the repository keeps ADRs, it supplies `paths.adrRoot` and `adr.index` too.
 
 If the file is missing, lacks any of those six keys, or has `paths.adrRoot` without `adr.index`, run the init in [the configuration reference](references/config.md), then carry on. The init writes the missing keys, and in the same run settles the repository's agent instructions, which name both stores. The script has no default limit, so the value in force is always the one in the file.
 

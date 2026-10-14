@@ -142,10 +142,10 @@ statement a task finds the code contradicts is corrected too, change or not; wha
 work out about an area is recorded once you agree.
 
 Each SDD is a folder, `SDDnnn-<slug>/`, whose `README.md` holds the summary and a generated index.
-When a file passes `sdd.maxLines`, its largest subsections move into files named for their anchors,
-leaving behind a pointer — the heading, linking the new file — and a section file that fits back
-into its parent's is merged back, so the agent always reads whole files instead of grepping a long
-one. References are ids, `SDD001§3.2`, never paths, so nothing breaks when files split or merge.
+When a file passes `sdd.maxChars` characters, its largest subsections move into files named for
+their anchors, leaving behind a pointer — the heading, linking the new file — and a section file
+that fits back into its parent's is merged back, so the agent always reads whole files instead of
+grepping a long one. References are ids, `SDD001§3.2`, never paths, so nothing breaks when files split or merge.
 
 Each store also has an index, `index.generated.md` by default: every doc, its title linking its
 `README.md`, then its summary — for the ADRs, every record and its status — so an agent picks the
@@ -235,11 +235,11 @@ installed on its own. The whole file:
     "glossary": "devdoc/glossary.md"
   },
   "sdd": {
-    "maxLines": 500,
+    "maxChars": 24000,
     "index": { "path": "devdoc/sdd/index.generated.md", "summary": "paragraph", "depth": 0 }
   },
   "kb": {
-    "maxLines": 500,
+    "maxChars": 24000,
     "index": { "path": "devdoc/kb/index.generated.md", "summary": "paragraph", "depth": 0 }
   },
   "adr": {
@@ -253,8 +253,8 @@ installed on its own. The whole file:
 | ------------------------------------------ | -------------------------------------------------------------- | -------------------------------------------- |
 | `paths.draftRoot`                          | `draft-ticket`                                                 | `draft-ticket`, `jira-push-ticket`           |
 | `paths.adrRoot`, `paths.adrTemplate`       | `to-adr`                                                       | `to-adr`                                     |
-| `paths.sddRoot`, `sdd.maxLines`            | `to-sdd` or `to-kb`, one shared init                           | `to-sdd`, the shared script, the Stop hook   |
-| `paths.kbRoot`, `kb.maxLines`              | `to-sdd` or `to-kb`, one shared init                           | `to-kb`, the shared script, the Stop hook    |
+| `paths.sddRoot`, `sdd.maxChars`            | `to-sdd` or `to-kb`, one shared init                           | `to-sdd`, the shared script, the Stop hook   |
+| `paths.kbRoot`, `kb.maxChars`              | `to-sdd` or `to-kb`, one shared init                           | `to-kb`, the shared script, the Stop hook    |
 | `sdd.index`, `kb.index`                    | `to-sdd` or `to-kb`, one shared init                           | the shared script, the start-of-turn hook    |
 | `adr.index`                                | `to-adr`, or the `to-sdd` and `to-kb` init                     | the shared script, the start-of-turn hook, `to-sdd`, `to-adr` |
 | `paths.glossary`                           | `to-glossary`                                                  | `to-glossary`, `draft-ticket`, the shared script |

@@ -73,7 +73,7 @@ function findRoot(start) {
 }
 
 // One kind per doc type whose root the config names, in TYPES order: the type, where its docs
-// live, its line limit, and its index file. Beside them, the ADRs when the config names their
+// live, its size limit, and its index file. Beside them, the ADRs when the config names their
 // root: where they live, the template to leave out of the list, and their index file. And the
 // glossary when the config names it, which only the agent block mentions.
 function loadConfig(root) {
@@ -100,13 +100,16 @@ function loadConfig(root) {
     const at = pathAt(type.rootKey);
     if (!at) continue;
     const own = section(type);
-    const maxLines = own.maxLines;
+    const maxChars = own.maxChars;
     kinds.push({
       type,
       rootRel: at.rel,
       rootAbs: at.abs,
-      maxLines: Number.isInteger(maxLines) && maxLines > 0 ? maxLines : null,
-      maxLinesRaw: maxLines,
+      maxChars: Number.isInteger(maxChars) && maxChars > 0 ? maxChars : null,
+      maxCharsRaw: maxChars,
+      // The limit counted lines before it counted characters. Only named in the error, so that a
+      // repository set up then is told why its limit is gone.
+      maxLinesOld: own.maxLines !== undefined,
       index: indexConfig(root, type, at.rel, own.index, adrRel),
     });
   }
@@ -183,13 +186,17 @@ function requireRoots(cfg, { adr = false } = {}) {
   fail(`${CONFIG_NAME} has no ${keys}; the ${skills} skill's init sets ${types.length === 1 ? 'it' : 'them'}`);
 }
 
+// What follows "has no <section>.maxChars" when the config still has the limit in lines.
+const oldLimit = (k) =>
+  k.maxLinesOld && k.maxCharsRaw === undefined ? `, only ${k.type.section}.maxLines, a limit in lines, which is no longer read` : '';
+
 // No default: the init writes the limit into the config, so the number in force is visible there.
-function requireMaxLines(cfg) {
+function requireMaxChars(cfg) {
   for (const k of cfg.kinds) {
-    if (k.maxLines) continue;
-    const key = `${k.type.section}.maxLines`;
-    if (k.maxLinesRaw === undefined) fail(`${CONFIG_NAME} has no ${key}; the ${k.type.skill} skill's init sets it`);
-    fail(`${key} in ${CONFIG_NAME} must be a positive whole number, not ${JSON.stringify(k.maxLinesRaw)}`);
+    if (k.maxChars) continue;
+    const key = `${k.type.section}.maxChars`;
+    if (k.maxCharsRaw === undefined) fail(`${CONFIG_NAME} has no ${key}${oldLimit(k)}; the ${k.type.skill} skill's init sets it`);
+    fail(`${key} in ${CONFIG_NAME} must be a positive whole number, not ${JSON.stringify(k.maxCharsRaw)}`);
   }
 }
 
@@ -589,7 +596,7 @@ function report(cfg, issues) {
 // A check scoped to some docs leaves the index files to the full one.
 function cmdCheck(cfg, args) {
   requireRoots(cfg);
-  requireMaxLines(cfg);
+  requireMaxChars(cfg);
   const docs = loadDocs(cfg);
   const sel = select(cfg, docs, args);
   return report(cfg, [...collectIssues(cfg, docs, sel, citingFiles(cfg, docs)), ...(sel ? [] : indexIssues(cfg)), ...instructionIssues(cfg)]);
@@ -602,8 +609,8 @@ function refreshIndexes(cfg, docs) {
 
 // What fix and checkDoc need to know about a doc.
 function fixCtx(cfg, doc) {
-  const { type, maxLines } = kindOfDoc(cfg, doc);
-  return { id: doc.id, maxLines, noun: type.noun, lineCites: type.lint.lineCites };
+  const { type, maxChars } = kindOfDoc(cfg, doc);
+  return { id: doc.id, maxChars, noun: type.noun, lineCites: type.lint.lineCites };
 }
 
 // Writes the files that changed, and deletes those fix merged away.
@@ -621,7 +628,7 @@ function writeDocFiles(dir, files, before, eol) {
 
 function cmdFix(cfg, args, dryRun) {
   requireRoots(cfg);
-  requireMaxLines(cfg);
+  requireMaxChars(cfg);
   const docs = loadDocs(cfg);
   const sel = select(cfg, docs, args);
   let blocked = false;
@@ -657,7 +664,7 @@ function cmdMigrate(cfg, dryRun) {
   if (!legacy.some((t) => kindOf(cfg, t.prefix))) {
     fail(`${CONFIG_NAME} has no ${either(legacy.map((t) => `paths.${t.rootKey}`))}; the ${either(legacy.map((t) => t.skill))} skill's init sets it`);
   }
-  requireMaxLines(cfg);
+  requireMaxChars(cfg);
   const docs = loadDocs(cfg);
   const flat = docs.filter((d) => d.kind === 'flat');
   if (!flat.length) {
@@ -1269,11 +1276,11 @@ function hook(input) {
   const kinds = cfg.kinds.filter((k) => touchedKinds.has(k));
 
   const lines = [];
-  const unchecked = kinds.filter((k) => !k.maxLines);
+  const unchecked = kinds.filter((k) => !k.maxChars);
   if (unchecked.length) {
     for (const k of unchecked) {
       lines.push(
-        `${k.type.docs} changed, but ${CONFIG_NAME} has no valid ${k.type.section}.maxLines, so they cannot be checked. Run the ${k.type.skill} skill's init to set it.`,
+        `${k.type.docs} changed, but ${CONFIG_NAME} has no valid ${k.type.section}.maxChars${oldLimit(k)}, so they cannot be checked. Run the ${k.type.skill} skill's init to set it.`,
       );
     }
   } else {

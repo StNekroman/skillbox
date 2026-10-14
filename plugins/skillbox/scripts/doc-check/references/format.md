@@ -43,7 +43,7 @@ After the summary, the README may hold a few short lines. Then come the sections
 
 ### Files
 
-`fix` owns the file layout. When a file goes over its type's limit, `sdd.maxLines` or `kb.maxLines`, its largest subsections move into files of their own, named for their anchors (`3.md`, `3.2.md`), until the file is within two-thirds of the limit. The small ones stay with their parent. A section file that would fit back into its parent's file, keeping that file within two-thirds of the limit, is merged back. So a section lives in `<anchor>.md`, or else in the file of its nearest parent section that has one.
+`fix` owns the file layout. When a file goes over its type's limit, `sdd.maxChars` or `kb.maxChars` characters, its largest subsections move into files of their own, named for their anchors (`3.md`, `3.2.md`), until the file is within two-thirds of the limit. The small ones stay with their parent. A section file that would fit back into its parent's file, keeping that file within two-thirds of the limit, is merged back. So a section lives in `<anchor>.md`, or else in the file of its nearest parent section that has one.
 
 Where a section moved out, the file it left keeps a **pointer** in its place: the section's heading as a link to its file, `### [§3.2 Retries with backoff](3.2.md)`. A reader of that file still meets every subsection in order. A pointer holds no text, and it is not the section: the section's heading is in the file it links.
 

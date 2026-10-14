@@ -58,7 +58,7 @@ with a suggestion to run `to-kb`.
 
 | | |
 |---|---|
-| Config | `paths.kbRoot`, `kb.maxLines` and `kb.index` — see [references/config.md](references/config.md). The limit has no default; the init writes 500, and git-ignores the index file |
+| Config | `paths.kbRoot`, `kb.maxChars` and `kb.index` — see [references/config.md](references/config.md). The limit has no default; the init writes 24000, and git-ignores the index file |
 | Git | For `refs --changed`, `next` and the Stop hook. `check`, `fix`, `lint`, `index` and the start-of-turn hook work without it |
 | Tools | Read, grep, git, web access for research, and the script. It never runs builds or tests |
 

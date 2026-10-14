@@ -15,7 +15,7 @@ const { body, section, readme, text } = require('./doc-helpers');
 const SCRIPT = path.join(__dirname, '..', 'doc-check', 'doc-check.js');
 const HAS_GIT = spawnSync('git', ['--version']).status === 0;
 const needsGit = { skip: !HAS_GIT && 'git is not installed' };
-const CONFIG = { version: 1, paths: { sddRoot: 'docs/sdd' }, sdd: { maxLines: 40 } };
+const CONFIG = { version: 1, paths: { sddRoot: 'docs/sdd' }, sdd: { maxChars: 2500 } };
 const GIT_ID = ['-c', 'user.name=test', '-c', 'user.email=test@example.com', '-c', 'commit.gpgsign=false'];
 
 function write(root, files) {
@@ -53,9 +53,9 @@ function repo(t, files = {}, { config = CONFIG, useGit = HAS_GIT } = {}) {
 }
 
 // A folder doc as fix leaves it, from the text of its README.md.
-function folderDoc(dir, readmeLines, maxLines = CONFIG.sdd.maxLines) {
+function folderDoc(dir, readmeLines, maxChars = CONFIG.sdd.maxChars) {
   const id = /^[A-Z]+\d+/.exec(path.basename(dir))[0];
-  const res = D.fixDoc(new Map([[D.README, readmeLines]]), { id, maxLines });
+  const res = D.fixDoc(new Map([[D.README, readmeLines]]), { id, maxChars });
   assert.equal(res.blocked, null);
   return Object.fromEntries([...res.files].map(([name, lines]) => [`${dir}/${name}`, lines]));
 }
@@ -174,11 +174,18 @@ describe('check', () => {
     assert.match(r.stdout, /two SDDs are numbered SDD003: SDD003-rates and SDD003-refunds; renumber the newer one/);
   });
 
-  test('the limit has no default: without sdd.maxLines it stops and points at the init', (t) => {
+  test('the limit has no default: without sdd.maxChars it stops and points at the init', (t) => {
     const root = repo(t, {}, { config: { paths: { sddRoot: 'docs/sdd' } } });
     const r = run(root, ['check']);
     assert.equal(r.status, 1);
-    assert.match(r.stderr, /has no sdd\.maxLines; the to-sdd skill's init sets it/);
+    assert.match(r.stderr, /has no sdd\.maxChars; the to-sdd skill's init sets it/);
+  });
+
+  test('a limit in lines, from before the limit counted characters, is named and not read', (t) => {
+    const root = repo(t, {}, { config: { paths: { sddRoot: 'docs/sdd' }, sdd: { maxLines: 500 } } });
+    const r = run(root, ['check']);
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /has no sdd\.maxChars, only sdd\.maxLines, a limit in lines, which is no longer read; the to-sdd skill's init sets it/);
   });
 
   test('outside any configured repository it says where the config would be', (t) => {
@@ -209,7 +216,7 @@ describe('fix', () => {
 
   test('merges back the section files that fit, and deletes them; a dry run deletes nothing', (t) => {
     const small = (n) => section(String(n), `Part ${n}`, body(`p${n}`, 2));
-    const split = folderDoc('docs/sdd/SDD001-mail', readme('SDD001', 'Mail', [small(1), section('2', 'Big', body('big', 30)), small(3)].flat()), 10);
+    const split = folderDoc('docs/sdd/SDD001-mail', readme('SDD001', 'Mail', [small(1), section('2', 'Big', body('big', 30)), small(3)].flat()), 400);
     const root = repo(t, split);
     const dir = path.join(root, 'docs/sdd/SDD001-mail');
     assert.deepEqual(fs.readdirSync(dir).sort(), ['1.md', '2.md', '3.md', 'README.md']);
@@ -222,7 +229,7 @@ describe('fix', () => {
     const r = run(root, ['fix']);
     assert.equal(r.status, 0, r.stdout);
     assert.deepEqual(fs.readdirSync(dir).sort(), ['2.md', 'README.md']);
-    assert.match(read(root, 'docs/sdd/SDD001-mail/README.md'), /^## §3 Part 3\n\np3 line 1\.\np3 line 2\.\n$/m);
+    assert.ok(read(root, 'docs/sdd/SDD001-mail/README.md').endsWith(text(small(3)).trimEnd() + '\n'));
     assert.equal(run(root, ['check']).status, 0);
   });
 
@@ -418,7 +425,13 @@ describe('hook', needsGit, () => {
   test('a changed SDD with no limit configured asks for the init', (t) => {
     const root = repo(t, mailDoc(), { config: { paths: { sddRoot: 'docs/sdd' } } });
     fs.appendFileSync(path.join(root, 'docs/sdd/SDD001-mail/README.md'), 'More text.\n');
-    assert.match(hook(root), /has no valid sdd\.maxLines/);
+    assert.match(hook(root), /has no valid sdd\.maxChars, so they cannot be checked\. Run the to-sdd skill's init to set it\./);
+  });
+
+  test('a changed SDD with only the limit in lines says so, and asks for the init', (t) => {
+    const root = repo(t, mailDoc(), { config: { paths: { sddRoot: 'docs/sdd' }, sdd: { maxLines: 500 } } });
+    fs.appendFileSync(path.join(root, 'docs/sdd/SDD001-mail/README.md'), 'More text.\n');
+    assert.match(hook(root), /has no valid sdd\.maxChars, only sdd\.maxLines, a limit in lines, which is no longer read, so they cannot be checked/);
   });
 
   test('finds the repository from a subdirectory, where a session may have started', (t) => {
@@ -542,8 +555,8 @@ describe('next', () => {
 });
 
 describe('knowledge-base pages (KBDOC)', () => {
-  const BOTH = { version: 1, paths: { sddRoot: 'docs/sdd', kbRoot: 'docs/kb' }, sdd: { maxLines: 40 }, kb: { maxLines: 40 } };
-  const KB_ONLY = { version: 1, paths: { kbRoot: 'docs/kb' }, kb: { maxLines: 40 } };
+  const BOTH = { version: 1, paths: { sddRoot: 'docs/sdd', kbRoot: 'docs/kb' }, sdd: { maxChars: 2500 }, kb: { maxChars: 2500 } };
+  const KB_ONLY = { version: 1, paths: { kbRoot: 'docs/kb' }, kb: { maxChars: 2500 } };
   const feedDoc = (lines = []) =>
     folderDoc(
       'docs/kb/KBDOC001-merchant-center',
@@ -607,13 +620,13 @@ describe('knowledge-base pages (KBDOC)', () => {
     assert.match(r.stdout, /^src\/a\.ts:1: short form: write KBDOC004§3, not §3 after KBDOC004§2$/m);
   });
 
-  test('a KB-only repository passes on its own, and needs kb.maxLines', (t) => {
+  test('a KB-only repository passes on its own, and needs kb.maxChars', (t) => {
     const r = run(repo(t, feedDoc(), { config: KB_ONLY }), ['check']);
     assert.equal(r.status, 0, r.stdout);
     assert.match(r.stdout, /^All KB pages pass\.$/m);
     const none = run(repo(t, feedDoc(), { config: { paths: { kbRoot: 'docs/kb' } } }), ['check']);
     assert.equal(none.status, 1);
-    assert.match(none.stderr, /has no kb\.maxLines; the to-kb skill's init sets it/);
+    assert.match(none.stderr, /has no kb\.maxChars; the to-kb skill's init sets it/);
   });
 
   test('fix splits a KB page and writes its breadcrumbs; an attachments folder is left alone', (t) => {
@@ -716,7 +729,7 @@ describe('knowledge-base pages (KBDOC)', () => {
     });
 
     test('a root of "." holds the docs at the top of the repository', (t) => {
-      const config = { version: 1, paths: { sddRoot: '.' }, sdd: { maxLines: 40 } };
+      const config = { version: 1, paths: { sddRoot: '.' }, sdd: { maxChars: 2500 } };
       const root = repo(t, folderDoc('SDD001-mail', readme('SDD001', 'Mail', section('1', 'One'))), { config });
       fs.appendFileSync(path.join(root, 'SDD001-mail/README.md'), text(section('4.1', 'Orphan')));
       assert.match(hook(root), /§4\.1 has no parent/);
@@ -729,7 +742,7 @@ describe('knowledge-base pages (KBDOC)', () => {
 });
 
 describe('links', () => {
-  const BOTH = { version: 1, paths: { sddRoot: 'docs/sdd', kbRoot: 'docs/kb' }, sdd: { maxLines: 200 }, kb: { maxLines: 200 } };
+  const BOTH = { version: 1, paths: { sddRoot: 'docs/sdd', kbRoot: 'docs/kb' }, sdd: { maxChars: 10000 }, kb: { maxChars: 10000 } };
   const lintMessages = (stdout) =>
     stdout
       .split('\n')
@@ -749,12 +762,12 @@ describe('links', () => {
           '```',
         ]),
       ]),
-      200,
+      10000,
     );
     const kb = folderDoc(
       'docs/kb/KBDOC001-merchant-center',
       readme('KBDOC001', 'Merchant Center', section('1', 'Spec', ['[spec](../attachments/spec.pdf) and [draft](../attachments/none.pdf).'])),
-      200,
+      10000,
     );
     const root = repo(t, { ...sdd, ...kb, 'src/mail.ts': ['export {};'], 'img/logo.png': 'PNG', 'docs/kb/attachments/spec.pdf': 'PDF' }, { config: BOTH });
     const r = run(root, ['lint']);
@@ -777,7 +790,7 @@ describe('links', () => {
           ...section('2.1', 'Tools', ['Scripts in `tools/`.']),
           ...section('3', 'Legacy', ['Once `src/old.ts`.']),
         ]),
-        200,
+        10000,
       );
     const code = {
       'src/feed.ts': ['export {};'],
@@ -790,7 +803,7 @@ describe('links', () => {
 
     test('--changed lists the KB sections that link a changed file, by link, by path, deleted files and attachments too', (t) => {
       const files = page();
-      const sdd = folderDoc('docs/sdd/SDD001-mail', readme('SDD001', 'Mail', section('1', 'One', ['Feed: [feed](../../../src/feed.ts).'])), 200);
+      const sdd = folderDoc('docs/sdd/SDD001-mail', readme('SDD001', 'Mail', section('1', 'One', ['Feed: [feed](../../../src/feed.ts).'])), 10000);
       const root = repo(t, { ...files, ...sdd, ...code }, { config: BOTH });
       write(root, { 'src/feed.ts': ['// KBDOC001§1', 'export {};'], 'src/build/run.ts': ['export const x = 1;'], 'tools/x.sh': ['echo 2'], 'docs/kb/attachments/spec.pdf': 'PDF2' });
       fs.rmSync(path.join(root, 'src/old.ts'));
@@ -832,9 +845,9 @@ describe('links', () => {
       const sdd = folderDoc(
         'docs/sdd/SDD001-mail',
         readme('SDD001', 'Mail', [...section('1', 'Overview', ['See §2.1.']), ...section('2', 'Delivery', ['Sends.']), ...section('2.1', 'Retries', ['Retries.'])]),
-        200,
+        10000,
       );
-      const kb = folderDoc('docs/kb/KBDOC001-merchant-center', readme('KBDOC001', 'Merchant Center', section('1', 'Feed', ['Uses SDD001§2.'])), 200);
+      const kb = folderDoc('docs/kb/KBDOC001-merchant-center', readme('KBDOC001', 'Merchant Center', section('1', 'Feed', ['Uses SDD001§2.'])), 10000);
       const root = repo(t, { ...sdd, ...kb, 'src/a.ts': ['// SDD001§2 and SDD001§2.1', '// SDD1§2', '// SDD001 and SDD001§1'] }, { config: BOTH });
       const lineOf = (files, text) => files.findIndex((l) => l.includes(text)) + 1;
       const sddLines = sdd['docs/sdd/SDD001-mail/README.md'];
@@ -901,7 +914,7 @@ describe('the store index', () => {
   });
 
   test('two types under one path share one file, a heading each', (t) => {
-    const config = { version: 1, paths: { sddRoot: 'docs', kbRoot: 'docs' }, sdd: { maxLines: 40, index: {} }, kb: { maxLines: 40, index: {} } };
+    const config = { version: 1, paths: { sddRoot: 'docs', kbRoot: 'docs' }, sdd: { maxChars: 2500, index: {} }, kb: { maxChars: 2500, index: {} } };
     const root = repo(
       t,
       {
@@ -1067,7 +1080,7 @@ describe('the ADR index', () => {
   });
 
   test('shares a file with the SDD index, under a heading of its own; fix rewrites it with the rest', (t) => {
-    const config = { ...ADRS, paths: { ...ADRS.paths, sddRoot: 'docs/sdd' }, sdd: { maxLines: 40, index: { path: 'docs/index.md' } }, adr: { index: { path: 'docs/index.md' } } };
+    const config = { ...ADRS, paths: { ...ADRS.paths, sddRoot: 'docs/sdd' }, sdd: { maxChars: 2500, index: { path: 'docs/index.md' } }, adr: { index: { path: 'docs/index.md' } } };
     const root = repo(t, { ...mailDoc(), ...records() }, { config, useGit: false });
     assert.equal(run(root, ['index']).stdout, 'docs/index.md: 1 SDD and 3 ADRs, rewritten.\n');
     const both = read(root, 'docs/index.md');
@@ -1125,7 +1138,7 @@ test("the plugin's update-instructions command runs this script's instructions",
 });
 
 describe('instructions', () => {
-  const BOTH = { version: 1, paths: { sddRoot: 'docs/sdd', kbRoot: 'docs/kb' }, sdd: { maxLines: 40, index: {} }, kb: { maxLines: 40, index: {} } };
+  const BOTH = { version: 1, paths: { sddRoot: 'docs/sdd', kbRoot: 'docs/kb' }, sdd: { maxChars: 2500, index: {} }, kb: { maxChars: 2500, index: {} } };
   const TEMPLATE = fs.readFileSync(path.join(__dirname, '..', 'doc-check', 'references', 'instructions-block.md'), 'utf8');
   const VERSION = D.blockVersion(TEMPLATE);
   const BLOCK = D.renderAgentBlock(TEMPLATE, {

@@ -27,11 +27,11 @@ nor `paths.kbRoot`.
     "docRoots": ["devdoc/architecture-decisions", "devdoc/kb", "devdoc/sdd", "devdoc/specs", "devdoc/tech"]
   },
   "sdd": {
-    "maxLines": 500,
+    "maxChars": 24000,
     "index": { "path": "devdoc/sdd/index.generated.md", "summary": "paragraph", "depth": 0 }
   },
   "kb": {
-    "maxLines": 500,
+    "maxChars": 24000,
     "index": { "path": "devdoc/kb/index.generated.md", "summary": "paragraph", "depth": 0 }
   },
   "adr": {
@@ -44,7 +44,7 @@ nor `paths.kbRoot`.
 |---|---|
 | `paths.sddRoot` | Where SDD folders live, relative to the repository root. Read by `to-sdd`, the script and the Stop hook |
 | `paths.kbRoot` | Where knowledge-base page folders live, and their `attachments/` folder. Read by `to-kb`, the script and the Stop hook |
-| `sdd.maxLines`, `kb.maxLines` | The most lines one file of that type may hold before `doc-check.js fix` moves its subsections into files of their own. No default: the init writes them |
+| `sdd.maxChars`, `kb.maxChars` | The most characters one file of that type may hold before `doc-check.js fix` moves its subsections into files of their own. Characters, not lines: a paragraph is one line however long it runs. No default: the init writes them |
 | `sdd.index`, `kb.index` | The store's index: one file listing every doc, its title linking its `README.md`, then its summary. Without the key there is no index. See `The index` |
 | `adr.index` | The ADR index, for a repository whose file has `paths.adrRoot`: one file listing every architecture decision record, its title linking the file, then its status. The `to-adr` skill keeps the records; the script, the hook and the agent instructions only list them |
 | `paths.docRoots` | Directories searched for inbound references to a ticket draft when it is pushed to a tracker. These skills only add `sddRoot` and `kbRoot` to it |
@@ -77,9 +77,10 @@ asked — the init is a step inside the work, not a reason to stop and hand it b
 
 The init covers all six keys above, whichever skill runs it, and `adr.index` when the file has
 `paths.adrRoot`. Fill only the ones that are missing: a repository set up for SDDs before the
-knowledge base existed gets `paths.kbRoot`, `kb.maxLines` and `kb.index` now, one set up before
-the index existed gets `sdd.index` and `kb.index`, and one whose ADRs predate their index gets
-`adr.index`.
+knowledge base existed gets `paths.kbRoot`, `kb.maxChars` and `kb.index` now, one set up before
+the index existed gets `sdd.index` and `kb.index`, one whose ADRs predate their index gets
+`adr.index`, and one whose limits still count lines, `sdd.maxLines` and `kb.maxLines`, gets
+`sdd.maxChars` and `kb.maxChars` in their place.
 
 1. **Find the repository root.** `git rev-parse --show-toplevel`. Create `.skillbox/` there if it
    does not exist, and write the file inside it.
@@ -93,14 +94,14 @@ the index existed gets `sdd.index` and `kb.index`, and one whose ADRs predate th
 Fill only the keys below. Where ticket drafts or ADRs go is not this init's question; the ADR index
 is, once `paths.adrRoot` says where they are.
 
-### `paths.sddRoot` and `sdd.maxLines`
+### `paths.sddRoot` and `sdd.maxChars`
 
 Look for a directory that already holds SDDs: folders named like `SDD001-email-notifications/`,
 files named like `SDD001-email-notifications.md`, or a directory named `sdd` or `sdds` — an entry
 in `docRoots` included. One such directory has answered `sddRoot` itself. None, or several, means
 ask where SDDs should go, proposing `sdd` beside the repository's other docs.
 
-### `paths.kbRoot` and `kb.maxLines`
+### `paths.kbRoot` and `kb.maxChars`
 
 Look for a directory that already holds knowledge-base pages: folders named like
 `KBDOC001-merchant-center/`, or a directory named `kb` — an entry in `docRoots` included. One such
@@ -113,10 +114,15 @@ Add `sddRoot` and `kbRoot` to `docRoots`, creating the list if there is none —
 directories you found on the way. A doc that cites a ticket draft is an inbound reference
 `jira-push-ticket` must rewrite, and it searches only `docRoots`.
 
-Write `sdd.maxLines` and `kb.maxLines` as `500` without asking, and say in the one-line report that
-they are there to tune. Never leave one out: `doc-check.js` has no default, so that the limit in
-force is always the one written in the file. A lower value later splits the files over it; a
-higher one merges nothing back, since no path may move.
+Write `sdd.maxChars` and `kb.maxChars` as `24000` without asking, and say in the one-line report
+that they are there to tune. At that size an agent reads a whole file in one call: Claude Code cuts
+a shell command's output at 30,000 characters. Never leave one out: `doc-check.js` has no default,
+so that the limit in force is always the one written in the file. A lower value splits the files
+over it at the next `fix`; a higher one lets `fix` merge back the section files that then fit.
+
+An `sdd.maxLines` or `kb.maxLines` is the limit from before it counted characters, and the script
+no longer reads it. Remove it as you write the `maxChars` key beside it, then run
+`doc-check.js fix`, which splits the files the new limit puts over it, and say so in the report.
 
 ### `sdd.index`, `kb.index` and `adr.index`
 

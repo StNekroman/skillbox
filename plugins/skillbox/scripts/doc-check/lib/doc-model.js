@@ -18,7 +18,7 @@ const README = 'README.md';
 const SUMMARY_MAX = 500;
 
 // The doc types. A prefix is capitals only and starts no other, so no id can be read as another
-// type's. rootKey and section name the config keys, paths.<rootKey> and <section>.maxLines; skill
+// type's. rootKey and section name the config keys, paths.<rootKey> and <section>.maxChars; skill
 // is the one whose init sets them. indexTitle heads the type's list in the store index.
 // legacyFlat: single-file docs, <PREFIX>nnn-<slug>.md, are still loaded, and migrate moves them
 // into folders. linkBack: refs --changed reports the sections that link a changed file. lint:
@@ -202,6 +202,11 @@ function joinLines(lines, eol = '\n', final = true) {
 }
 
 const isBlank = (line) => !line.trim();
+
+// What the size limit counts: characters, each line break one, whatever the file's line ending.
+// Not lines: a paragraph is one line however long it runs, so a count of lines says little about
+// how much an agent has to read.
+const sizeOf = (lines) => lines.reduce((n, line) => n + line.length + 1, 0);
 
 // Drops trailing blank lines and thematic breaks: the separators that sat between two sections.
 function trimEnd(lines) {
@@ -618,7 +623,7 @@ function adrEntry(lines, { name, link }) {
 // Issues for one doc folder. `fixable` ones are what fix repairs; a `structural` one stops fix
 // from touching the doc at all, because moving text around it could lose or misplace some. noun
 // names the doc in messages; lineCites says whether a line-number citation is an error.
-function checkDoc(m, { id, maxLines, noun = 'SDD', lineCites = true }) {
+function checkDoc(m, { id, maxChars, noun = 'SDD', lineCites = true }) {
   const issues = [];
   const add = (file, i, message, kind = {}) =>
     issues.push({
@@ -765,8 +770,8 @@ function checkDoc(m, { id, maxLines, noun = 'SDD', lineCites = true }) {
   // A section file small enough to go back where its parent is. Only on a sound doc: the merge
   // is worked out by building it, which needs every section and every pointer where it belongs.
   if (!astray.length && !pointers && !issues.some((x) => x.structural)) {
-    for (const c of mergeCandidates(m, maxLines)) {
-      add(c.file, undefined, `§${c.anchor} fits back into ${c.home}, ${c.lines} lines together, within ${packTarget(maxLines)}; fix merges it`, {
+    for (const c of mergeCandidates(m, maxChars)) {
+      add(c.file, undefined, `§${c.anchor} fits back into ${c.home}, ${c.chars} characters together, within ${packTarget(maxChars)}; fix merges it`, {
         fixable: true,
       });
     }
@@ -780,10 +785,11 @@ function checkDoc(m, { id, maxLines, noun = 'SDD', lineCites = true }) {
   }
 
   for (const f of orderFiles(m.files)) {
-    if (f.lines.length <= maxLines || f.anchor === undefined) continue;
+    const size = sizeOf(f.lines);
+    if (size <= maxChars || f.anchor === undefined) continue;
     const owner = f.anchor;
     const inline = inlineChildren(m, f.name, owner);
-    const what = `${f.lines.length} lines, over the ${maxLines}-line limit`;
+    const what = `${size} characters, over the ${maxChars}-character limit`;
     if (inline.length) {
       add(f.name, undefined, `${what}; fix moves its largest ${owner ? 'subsections' : 'sections'} into their own files`, {
         fixable: true,
@@ -808,8 +814,8 @@ function inlineChildren(m, fileName, owner) {
 
 // Two-thirds of the limit: where a split stops, and how far a merge may fill a file. A file is
 // split only once it is over the limit, and merged into only while it stays within two-thirds, so
-// neither undoes the other, and a few lines more or less do not move sections back and forth.
-const packTarget = (maxLines) => Math.floor((maxLines * 2) / 3);
+// neither undoes the other, and a sentence more or less does not move sections back and forth.
+const packTarget = (maxChars) => Math.floor((maxChars * 2) / 3);
 
 // The file that holds a section's parent: where the section goes when it has no file of its own.
 function homeOf(m, anchor) {
@@ -912,8 +918,8 @@ function moveInto(files, m, anchor, to) {
 // text fits into the file that holds its parent with that file staying within two-thirds of the
 // limit, measured by building the merge. Deepest first, so a subtree folds back up one level at a
 // time; then the shortest, so as many go back as fit.
-function mergeCandidates(m, maxLines) {
-  const target = packTarget(maxLines);
+function mergeCandidates(m, maxChars) {
+  const target = packTarget(maxChars);
   const sectionFiles = [...m.files.values()].filter((f) => f.anchor);
   const out = [];
   for (const f of sectionFiles) {
@@ -921,8 +927,8 @@ function mergeCandidates(m, maxLines) {
     if (!s || !hasOwnFile(s) || sectionFiles.some((g) => isWithin(g.anchor, f.anchor))) continue;
     const home = homeOf(m, f.anchor);
     if (!m.files.has(home)) continue;
-    const { into } = relocated(m, f.anchor, home);
-    if (into.length <= target) out.push({ anchor: f.anchor, file: f.name, home, lines: into.length, size: f.lines.length });
+    const chars = sizeOf(relocated(m, f.anchor, home).into);
+    if (chars <= target) out.push({ anchor: f.anchor, file: f.name, home, chars, size: sizeOf(f.lines) });
   }
   return out.sort((a, b) => depthOf(b.anchor) - depthOf(a.anchor) || a.size - b.size || compareAnchors(a.anchor, b.anchor));
 }
@@ -931,15 +937,16 @@ function mergeCandidates(m, maxLines) {
 // being split. A file starts being split when it goes over the limit, and goes on until it is
 // within two-thirds of it — or, when the section's own text alone is longer than that, until it
 // is within the limit. `splitting` carries that state from one move to the next.
-function nextMove(m, maxLines, splitting) {
+function nextMove(m, maxChars, splitting) {
   for (const f of orderFiles(m.files)) {
     if (f.anchor === undefined) continue;
-    if (f.lines.length > maxLines) splitting.add(f.name);
+    const size = sizeOf(f.lines);
+    if (size > maxChars) splitting.add(f.name);
     if (!splitting.has(f.name)) continue;
-    const kids = inlineChildren(m, f.name, f.anchor).map((s) => ({ s, size: rangeEnd(f, s) - s.i }));
-    const own = f.lines.length - kids.reduce((n, k) => n + k.size, 0);
-    const target = own <= packTarget(maxLines) ? packTarget(maxLines) : maxLines;
-    if (f.lines.length <= target || !kids.length) {
+    const kids = inlineChildren(m, f.name, f.anchor).map((s) => ({ s, size: sizeOf(f.lines.slice(s.i, rangeEnd(f, s))) }));
+    const own = size - kids.reduce((n, k) => n + k.size, 0);
+    const target = own <= packTarget(maxChars) ? packTarget(maxChars) : maxChars;
+    if (size <= target || !kids.length) {
       splitting.delete(f.name);
       continue;
     }
@@ -1048,7 +1055,7 @@ function applyIndex(files, m) {
 // Everything fix repairs, in one pass: heading levels; then, one at a time, sections out of place,
 // section files that fit back, and sections out of files that are too long, in that order, with
 // the breadcrumbs, the pointers and the index regenerated before every step, since all three count
-// towards a file's lines. Returns the new files and what changed, or the structural issues that
+// towards a file's size. Returns the new files and what changed, or the structural issues that
 // stopped it.
 function fixDoc(input, ctx) {
   const files = new Map([...input].map(([name, lines]) => [name, [...lines]]));
@@ -1091,13 +1098,13 @@ function fixDoc(input, ctx) {
       replace(astray.anchor, astray.to);
       continue;
     }
-    const [back] = mergeCandidates(m, ctx.maxLines);
+    const [back] = mergeCandidates(m, ctx.maxChars);
     if (back) {
       note(merged, back.home, back.anchor);
       replace(back.anchor, back.home);
       continue;
     }
-    const next = nextMove(m, ctx.maxLines, splitting);
+    const next = nextMove(m, ctx.maxChars, splitting);
     if (!next) break;
     note(moved, m.sections.get(next).file, next);
     moveOut(files, m, next, ctx.id);
@@ -1649,6 +1656,7 @@ module.exports = {
   levelFor,
   splitLines,
   joinLines,
+  sizeOf,
   scanFile,
   buildModel,
   summaryOf,

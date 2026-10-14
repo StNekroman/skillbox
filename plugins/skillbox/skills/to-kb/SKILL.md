@@ -51,7 +51,7 @@ A binary — a PDF, a screenshot, a contract — goes in `<kbRoot>/attachments/`
 
 ## Configuration
 
-Read `.skillbox/tickets.json` under the repository root. It supplies `paths.kbRoot`, `kb.maxLines` and `kb.index`, and `paths.sddRoot`, `sdd.maxLines` and `sdd.index` for the SDDs. Where the repository keeps ADRs, it supplies `paths.adrRoot` and `adr.index` too.
+Read `.skillbox/tickets.json` under the repository root. It supplies `paths.kbRoot`, `kb.maxChars` and `kb.index`, and `paths.sddRoot`, `sdd.maxChars` and `sdd.index` for the SDDs. Where the repository keeps ADRs, it supplies `paths.adrRoot` and `adr.index` too.
 
 If the file is missing, lacks any of those six keys, or has `paths.adrRoot` without `adr.index`, run the init in [the configuration reference](references/config.md), then carry on. The init writes the missing keys, and in the same run settles the repository's agent instructions, which name both stores. The script has no default limit, so the value in force is always the one in the file.
 

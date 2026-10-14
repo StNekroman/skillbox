@@ -47,12 +47,13 @@ docs/sdd/
 - **Numbers are frozen; text is not.** A section is never renumbered and a number never reused. Its
   text is rewritten in place whenever it stops being true. A removed section keeps its heading,
   titled `(removed; see §3.6)`.
-- **Files split and merge by size.** When a file passes `sdd.maxLines`, its largest subsections
-  move into files of their own, named for their anchors, until it is within two-thirds of the
-  limit; small ones stay with their parent, so no file is a stub. A section file that would fit
-  back into its parent's file within two-thirds of the limit is merged back. Splitting only above
-  the limit and merging only up to two-thirds of it means neither undoes the other, and a few
-  lines of editing do not move sections around. A section lives in `<anchor>.md`, or else in the
+- **Files split and merge by size.** When a file passes `sdd.maxChars` characters, its largest
+  subsections move into files of their own, named for their anchors, until it is within two-thirds
+  of the limit; small ones stay with their parent, so no file is a stub. A section file that would
+  fit back into its parent's file within two-thirds of the limit is merged back. Splitting only
+  above the limit and merging only up to two-thirds of it means neither undoes the other, and a few
+  sentences of editing do not move sections around. The limit counts characters, not lines, since
+  a paragraph is one line however long it runs. A section lives in `<anchor>.md`, or else in the
   file of its nearest parent section that has one. A small SDD stays one `README.md`.
 - **A moved section leaves a pointer.** Where it was, the file keeps its heading as a link to its
   file, `### [§3.2 Retries with backoff](3.2.md)`, so whoever reads that file top to bottom meets
@@ -166,7 +167,7 @@ the folders instead.
 
 | | |
 |---|---|
-| Config | `paths.sddRoot`, `sdd.maxLines` and `sdd.index`, set up with `paths.kbRoot`, `kb.maxLines` and `kb.index`, and `adr.index` where `paths.adrRoot` is set — see [references/config.md](references/config.md). The limits have no default; the init writes 500, and git-ignores the index files |
+| Config | `paths.sddRoot`, `sdd.maxChars` and `sdd.index`, set up with `paths.kbRoot`, `kb.maxChars` and `kb.index`, and `adr.index` where `paths.adrRoot` is set — see [references/config.md](references/config.md). The limits have no default; the init writes 24000, and git-ignores the index files |
 | Git | For `refs --changed`, `next` and the Stop hook. `check`, `fix`, `migrate`, `lint`, `index` and the start-of-turn hook work without it |
 | Tools | Read, grep, git, and the script. It never runs builds or tests |
 

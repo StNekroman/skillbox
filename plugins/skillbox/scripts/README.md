@@ -109,8 +109,8 @@ cannot be bound.
 ## The doc checker
 
 `doc-check.js` finds the repository by walking up to `.skillbox/tickets.json`, and reads each doc
-type's root and limit from it: `paths.sddRoot` and `sdd.maxLines`, `paths.kbRoot` and
-`kb.maxLines`. The split rule, the formats and the reasons behind them are in the
+type's root and limit from it: `paths.sddRoot` and `sdd.maxChars`, `paths.kbRoot` and
+`kb.maxChars`. The split rule, the formats and the reasons behind them are in the
 [to-sdd README](../skills/to-sdd/README.md); these matter here.
 
 **One engine, a registry of types.** `TYPES` in `lib/doc-model.js` lists each doc type: its
@@ -124,7 +124,7 @@ root for is a warning, "not checked", never an error.
 
 | | SDD | KBDOC |
 |---|---|---|
-| Where | `paths.sddRoot`, `sdd.maxLines` | `paths.kbRoot`, `kb.maxLines` |
+| Where | `paths.sddRoot`, `sdd.maxChars` | `paths.kbRoot`, `kb.maxChars` |
 | Single-file docs, `migrate` | yes | no |
 | A line-number citation | an error | allowed |
 | `lint`: history wording, fenced code | yes | no — content on a page about another system |

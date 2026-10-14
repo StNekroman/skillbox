@@ -1,8 +1,11 @@
 // Builders for docs in tests: markdown in the shape the doc rules describe.
 
-// n distinct lines, so a test can tell whose text ended up where.
+// n distinct lines, so a test can tell whose text ended up where. Each runs as long as a sentence
+// in a real doc, so that, as there, the text makes up most of a file's size, and the headings,
+// pointers and index little of it.
+const FILLER = 'More words, so that the line runs about as long as a sentence does.';
 function body(tag, n = 1) {
-  return Array.from({ length: n }, (_, i) => `${tag} line ${i + 1}.`);
+  return Array.from({ length: n }, (_, i) => `${tag} line ${i + 1}. ${FILLER}`);
 }
 
 // A section heading at the level its depth takes, its text, and the blank line after.
