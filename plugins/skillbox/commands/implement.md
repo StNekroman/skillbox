@@ -17,6 +17,8 @@ Carry the ticket through to the end: the code, its tests, and whatever the ticke
 - the ticket leaves a choice open, and the options differ in behaviour, cost or risk that someone will care about;
 - the work needs more than the ticket's scope, or something hard to reverse: a migration, a deleted file, a changed public contract, a new dependency.
 
-Ask with AskUserQuestion, recommended option first. Gather the decisions you can foresee and ask them together, before writing the code they affect, rather than one at a time partway through a change.
+Ask with AskUserQuestion, one question per decision. The dialog may be all the user sees, so each question states on its own what you found, citing `file:line`, and what has to be chosen. Offer every reasonable way to resolve it as an option, two to four, with the one you recommend first and its label ending in "(Recommended)". Give each option its pros and cons in its description, as `Pros: … Cons: …`, specific to this ticket and this code: what it costs, what it risks, and what it makes easier or harder later. If only one option is reasonable, it is not a real decision, so settle it yourself.
+
+Gather the decisions you can foresee and ask them together, up to four per call, before writing the code they affect, rather than one at a time partway through a change.
 
 End with a short summary: what was done against each acceptance criterion, the decisions you made yourself, so the user can overturn any, and anything left undone and why.

@@ -114,8 +114,9 @@ An obvious answer is one the ticket, the code, the repository's conventions or a
 settles: where a change goes, what to name it, which existing pattern to follow. The agent decides
 those, keeps going, and lists them in its closing summary so you can overturn any. A real decision
 changes what gets built: the ticket contradicts the code, it leaves open a choice with trade-offs,
-or the work needs more than its scope or something hard to reverse. Those come as a picker,
-recommended option first, asked together before the code they affect.
+or the work needs more than its scope or something hard to reverse. Each one comes as a question
+in a picker: what was found, then every reasonable way to resolve it as an option with its pros and
+cons, the recommended one first. They are asked together, before the code they affect.
 
 The ticket can be any markdown file. A `draft-ticket` draft fits best: its acceptance criteria and
 test matrix become the definition of done, and the summary reports against them.
