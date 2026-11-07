@@ -4,7 +4,8 @@ The core of the family: everything here needs nothing beyond Node. Fork a Claude
 into a new session truncated at a chosen point and navigate the resulting tree; write settled
 research into ticket draft files, settled architecture decisions into ADRs and settled domain terms
 into a glossary, keep the repository's SDDs true as the code changes, and keep a knowledge base
-about the world outside the code beside them; and find where a slow Node.js path spends its time.
+about the world outside the code beside them; implement a ticket, asking you only for the real
+decisions; and find where a slow Node.js path spends its time.
 
 ## Components
 
@@ -13,6 +14,7 @@ about the world outside the code beside them; and find where a slow Node.js path
 | `/skillbox:fork-at`                             | command | Fork the conversation at a chosen turn                                                                  |
 | `/skillbox:fork-tree`                           | command | Show where this session sits among its forks                                                            |
 | `/skillbox:update-instructions`                 | command | Bring the SDD, ADR, glossary and knowledge-base block in `CLAUDE.md` and `AGENTS.md` up to date with the installed skills |
+| `/skillbox:implement`                           | command | Implement the ticket in a file, deciding what has an obvious answer and asking only for real decisions  |
 | [`draft-ticket`](skills/draft-ticket/README.md) | skill   | Writes one markdown file per deliverable, in a fixed ticket structure, every claim verified             |
 | [`to-adr`](skills/to-adr/README.md)             | skill   | Records a settled architecture decision as an ADR — and writes nothing when there is none               |
 | [`to-glossary`](skills/to-glossary/README.md)   | skill   | Records a settled domain term in the glossary, with the words not to use for it — and only what you settled |
@@ -96,6 +98,27 @@ asked for. Commit the file so your team shares one answer.
 [Configuration](#configuration) maps the file;
 [the skill's README](skills/draft-ticket/README.md) has what it produces and the rule that matters
 most.
+
+## implement
+
+```
+/skillbox:implement <@ticket-file> [notes]
+```
+
+The prompt you would otherwise type for every ticket, as a command: implement the ticket in the
+named file, decide the questions that have an obvious answer, and ask you only for real decisions.
+Type the path with `@` to get file completion; it works with or without one. Anything after the path
+is extra instruction, and wins where it disagrees with the ticket.
+
+An obvious answer is one the ticket, the code, the repository's conventions or a sensible default
+settles: where a change goes, what to name it, which existing pattern to follow. The agent decides
+those, keeps going, and lists them in its closing summary so you can overturn any. A real decision
+changes what gets built: the ticket contradicts the code, it leaves open a choice with trade-offs,
+or the work needs more than its scope or something hard to reverse. Those come as a picker,
+recommended option first, asked together before the code they affect.
+
+The ticket can be any markdown file. A `draft-ticket` draft fits best: its acceptance criteria and
+test matrix become the definition of done, and the summary reports against them.
 
 ## to-adr
 
