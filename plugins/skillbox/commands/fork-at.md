@@ -1,7 +1,7 @@
 ---
 description: Fork the current conversation into a new session, truncated at a chosen point.
 allowed-tools: Bash(node:*)
-argument-hint: "<@id | N | search text> [-- <directive for the child>]"
+argument-hint: "<@id | N | search text> [--no-open] [-- <directive for the child>]"
 ---
 
 Run this, passing the arguments as one single-quoted string exactly as typed, `--` included. Write each `'` inside them as `'\''`:

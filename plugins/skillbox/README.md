@@ -34,7 +34,7 @@ plugin needs an MCP server and a sign-in, this one does not.
 ## fork-at
 
 ```
-/skillbox:fork-at <@id | N | search text> [-- <directive for the child>]
+/skillbox:fork-at <@id | N | search text> [--no-open] [-- <directive for the child>]
 ```
 
 The child keeps history up to and including the matched exchange; the parent is left untouched. A
@@ -56,6 +56,11 @@ candidates and exits.
 
 The child opens in a new window straight away; the fork is created inside it, which takes a few
 seconds, and the window then becomes the child session, in the parent's project directory.
+
+`--no-open` creates the fork in the current session instead and prints the command that resumes it.
+Use it wherever a new window cannot reach your screen, such as a VS Code Remote-SSH session: the
+window would open on the remote machine and never appear. A directive has no window to go to, so
+it is not sent; paste it into the child yourself.
 
 The child is named `Fork: <your search text>` — or `Fork: <the matched prompt>` when you selected
 by `@id`, by number or with nothing — so it stands out in `claude --resume`'s picker and in the
