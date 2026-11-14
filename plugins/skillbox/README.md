@@ -5,7 +5,8 @@ into a new session truncated at a chosen point and navigate the resulting tree; 
 research into ticket draft files, settled architecture decisions into ADRs and settled domain terms
 into a glossary, keep the repository's SDDs true as the code changes, and keep a knowledge base
 about the world outside the code beside them; implement a ticket, asking you only for the real
-decisions; and find where a slow Node.js path spends its time.
+decisions, and take open questions one at a time when a short list is not enough to decide from;
+and find where a slow Node.js path spends its time.
 
 ## Components
 
@@ -15,6 +16,7 @@ decisions; and find where a slow Node.js path spends its time.
 | `/skillbox:fork-tree`                           | command | Show where this session sits among its forks                                                            |
 | `/skillbox:update-instructions`                 | command | Bring the SDD, ADR, glossary and knowledge-base block in `CLAUDE.md` and `AGENTS.md` up to date with the installed skills |
 | `/skillbox:implement`                           | command | Implement the ticket in a file, deciding what has an obvious answer and asking only for real decisions  |
+| `/skillbox:one-by-one`                          | command | Take the questions still open in the chat one at a time, each explained in depth with options, pros and cons |
 | [`draft-ticket`](skills/draft-ticket/README.md) | skill   | Writes one markdown file per deliverable, in a fixed ticket structure, every claim verified             |
 | [`to-adr`](skills/to-adr/README.md)             | skill   | Records a settled architecture decision as an ADR — and writes nothing when there is none               |
 | [`to-glossary`](skills/to-glossary/README.md)   | skill   | Records a settled domain term in the glossary, with the words not to use for it — and only what you settled |
@@ -125,6 +127,28 @@ cons, the recommended one first. They are asked together, before the code they a
 
 The ticket can be any markdown file. A `draft-ticket` draft fits best: its acceptance criteria and
 test matrix become the definition of done, and the summary reports against them.
+
+## one-by-one
+
+```
+/skillbox:one-by-one [which questions] [notes]
+```
+
+For when an agent ends with ten or more open questions, a few lines each, in an area that is new to
+you, and a few lines are not enough to decide. The command takes them one at a time. Each one comes
+with what was found and where, the background you need to judge it, and a concrete case: steps to
+reproduce for a bug, a use case for a design choice. Then two to four options with their pros and
+cons, the recommended one first.
+
+It does not matter where the questions came from: `/skillbox:implement`, a code review, a plan, or
+your own list. Name some to take only those (`3 5 7`, `only the security ones`). With no arguments
+it takes every question still open.
+
+Answer with an option number or in your own words, ask back to dig deeper, or type `skip` to move a
+question to the end of the queue. An answer that settles or changes a later question updates the
+queue. Nothing in the code changes while the walk runs. At the end you get the decisions, one line
+each, and if the questions were blocking work you had already asked for, the agent carries on with
+it.
 
 ## to-adr
 

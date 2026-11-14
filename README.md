@@ -15,7 +15,7 @@ MCP server costs nothing until used — so an addon is a unit someone can declin
 
 | Plugin                                               | What it does                                                                                                                                             | Components                                                                    |
 | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| [**skillbox**](plugins/skillbox/README.md)           | Core. Fork a conversation at a chosen point, navigate the fork tree, draft tickets and ADRs as markdown, implement a ticket, keep a glossary of domain terms, keep SDDs true and a knowledge base beside them, profile a slow Node.js path | 4 commands, 6 skills, 2 hooks, [5 scripts](plugins/skillbox/scripts/README.md) |
+| [**skillbox**](plugins/skillbox/README.md)           | Core. Fork a conversation at a chosen point, navigate the fork tree, draft tickets and ADRs as markdown, implement a ticket, take open questions one at a time, keep a glossary of domain terms, keep SDDs true and a knowledge base beside them, profile a slow Node.js path | 5 commands, 6 skills, 2 hooks, [5 scripts](plugins/skillbox/scripts/README.md) |
 | [**skillbox-jira**](plugins/skillbox-jira/README.md) | Jira addon. Push a ticket draft to Jira as an issue                                                                                                      | 1 skill, 1 MCP server. Depends on `skillbox`                                  |
 
 Drilling in:
@@ -26,6 +26,7 @@ Drilling in:
 | [`skillbox:fork-tree`](plugins/skillbox/README.md#fork-tree)                                | Show where this session sits among its forks                                        |
 | [`skillbox:update-instructions`](plugins/skillbox/README.md#update-instructions)            | The SDD, ADR, glossary and knowledge-base block in `CLAUDE.md` and `AGENTS.md` catches up with the plugin |
 | [`skillbox:implement`](plugins/skillbox/README.md#implement)                                | A ticket file becomes working code; you are asked only what is yours to decide      |
+| [`skillbox:one-by-one`](plugins/skillbox/README.md#one-by-one)                              | Open questions come one at a time, explained until you can decide                   |
 | [`skillbox:draft-ticket`](plugins/skillbox/skills/draft-ticket/README.md)                   | Settled research becomes one ticket file per deliverable                            |
 | [`skillbox:to-adr`](plugins/skillbox/skills/to-adr/README.md)                               | A settled architecture decision becomes an ADR; anything less, none                 |
 | [`skillbox:to-glossary`](plugins/skillbox/skills/to-glossary/README.md)                     | A settled domain term enters the glossary, and every session is held to it          |
