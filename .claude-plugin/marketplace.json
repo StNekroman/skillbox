@@ -9,7 +9,7 @@
   "plugins": [
     {
       "name": "skillbox",
-      "description": "Core: fork a conversation at a chosen point, navigate the fork tree, draft tickets and ADRs as markdown, implement a ticket, take open questions one at a time, keep a glossary of domain terms, keep SDDs true as the code changes and a knowledge base beside them, profile a slow Node.js path.",
+      "description": "Core: fork a conversation at a chosen point, navigate the fork tree, draft tickets and ADRs as markdown, implement a ticket, take open questions one at a time, prototype a page as switchable UI variants, keep a glossary of domain terms, keep SDDs true as the code changes and a knowledge base beside them, profile a slow Node.js path.",
       "author": { "name": "Roman Nefedov" },
       "category": "productivity",
       "source": "./plugins/skillbox"

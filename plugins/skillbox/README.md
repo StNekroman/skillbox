@@ -6,7 +6,7 @@ research into ticket draft files, settled architecture decisions into ADRs and s
 into a glossary, keep the repository's SDDs true as the code changes, and keep a knowledge base
 about the world outside the code beside them; implement a ticket, asking you only for the real
 decisions, and take open questions one at a time when a short list is not enough to decide from;
-and find where a slow Node.js path spends its time.
+prototype a page as several UI variants you flip through in the browser; and find where a slow Node.js path spends its time.
 
 ## Components
 
@@ -17,6 +17,7 @@ and find where a slow Node.js path spends its time.
 | `/skillbox:update-instructions`                 | command | Bring the SDD, ADR, glossary and knowledge-base block in `CLAUDE.md` and `AGENTS.md` up to date with the installed skills |
 | `/skillbox:implement`                           | command | Implement the ticket in a file, deciding what has an obvious answer and asking only for real decisions  |
 | `/skillbox:one-by-one`                          | command | Take the questions still open in the chat one at a time, each explained in depth with options, pros and cons |
+| `/skillbox:prototype`                           | command | Build structurally different UI variants of a page, switchable from a floating panel with a shortlist   |
 | [`draft-ticket`](skills/draft-ticket/README.md) | skill   | Writes one markdown file per deliverable, in a fixed ticket structure, every claim verified             |
 | [`to-adr`](skills/to-adr/README.md)             | skill   | Records a settled architecture decision as an ADR — and writes nothing when there is none               |
 | [`to-glossary`](skills/to-glossary/README.md)   | skill   | Records a settled domain term in the glossary, with the words not to use for it — and only what you settled |
@@ -149,6 +150,38 @@ question to the end of the queue. An answer that settles or changes a later ques
 queue. Nothing in the code changes while the walk runs. At the end you get the decisions, one line
 each, and if the questions were blocking work you had already asked for, the agent carries on with
 it.
+
+## prototype
+
+```
+/skillbox:prototype [count] <page, route or component> [notes]
+```
+
+For when you cannot pick a design until you see it. The command builds several variants of a page
+or component, five by default or the number you give first, that differ in structure: layout,
+information hierarchy, the primary action, not colour. They render inside the real page, with its
+real data, and a floating panel at the bottom of the screen flips between them.
+
+The panel shows the current variant with arrows to the previous and next one; `←` and `→` do the
+same. Open it to see the whole list. Untick the variants you have ruled out and the arrows skip
+them, so you can narrow five down to two and flip between those. Click a name to jump to any
+variant, ticked or not. The variant on screen and the ticked set live in the URL
+(`?variant=C&shortlist=A,C`), so a reload keeps them and a link shows a teammate the same
+shortlist. When the page already exists, its current design comes along as an extra entry to
+compare against.
+
+It works in any frontend stack. The variants and the panel are written in the project's own
+framework, router and styling, or as a plain script on a page with no framework, and no dependency
+is added. The panel and the switch appear only in development builds.
+
+Everything is throwaway and marked as such: the files sit next to the page with `prototype` in their
+names, with no tests and no real writes. No branch, commit, issue or pull request is made. Ask for
+changes (`the header from B with the list from D`) as often as you like. No tests, linters,
+type-checks or builds run while you iterate, even if the repository's instructions ask for them
+after every change. When you name a winner, the agent folds it into the real page properly, deletes
+the rest, and only then runs the checks.
+
+The command runs only when you type it; an agent will not reach for it on its own.
 
 ## to-adr
 
