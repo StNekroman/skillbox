@@ -1,8 +1,8 @@
 ---
 name: to-adr
-description: Record the architecture decisions settled in the current conversation as ADR markdown files under the repository’s ADR directory — the decision, the alternatives weighed, why each lost, and the consequences. Writes nothing when the conversation settled nothing architecturally significant. Use when a design discussion has reached a decision worth keeping; do not use for tickets, specs, meeting notes, or minor choices.
+description: Record the architecture decisions settled in the current conversation as ADR markdown files under the repository’s ADR directory — the decision, the alternatives weighed, why each lost, and the consequences. Writes nothing when the conversation settled nothing architecturally significant. Use when the conversation settled how the system is built — where data lives, how components talk, what may depend on what, a contract others rely on; do not use for visual, UI or copy choices, naming, tunable values, bug fixes, tickets, specs or meeting notes.
 metadata:
-  prompt-version: "2026-10-10.1"
+  prompt-version: "2026-11-19.1"
 ---
 
 # Record an Architecture Decision
@@ -29,16 +29,21 @@ A settled decision is architecturally significant when at least one of these hol
 
 | Test | It holds when |
 |---|---|
-| Costly to reverse | Undoing it means migrating data at rest, changing a contract other services, clients or tenants depend on, or rewriting more than one component. A single-PR revert is not costly. |
-| Reaches past one component | Other services, teams or future features have to conform to it. It is a rule, not an implementation detail. |
-| Sets a precedent | The next feature of the same kind will copy it — where files go, how services talk, which store holds what. |
+| Costly to reverse | Undoing it means migrating data at rest, changing a contract other services, clients or tenants depend on, or rewriting more than one component. A single-PR revert is not costly, and neither is a contract whose every consumer lives in this repository and ships with it. |
+| Reaches past one component | Other services, teams or future features have to conform to it. It is a rule about how the system is built, not an implementation detail, a product rule or a look. |
+| Sets a structural precedent | The next feature of the same kind will copy its structure — where code or data goes, how services talk, which store holds what. A convention — a name, a style, a colour — is not structure, however many places will follow it. |
 | Fixes a quality attribute | It decides tenant isolation, security, data retention, consistency, availability, or cost at scale. |
 
 Every record must also pass one more check: a future engineer would plausibly ask *"why didn't they just …?"*, and the answer lives only in this conversation. A decision nobody would question needs no record.
 
-These fall below the bar, however long the discussion about them ran:
+When you are unsure whether a test holds, it does not. A missing record costs one question to a teammate; a trivial one costs every reader of the log their trust in the rest.
 
-- visual and copy choices — colours, layout, wording;
+These fall below the bar, however long the discussion about them ran, and even when a test above seems to hold. Every button after this one will copy its colour, and the colour is still not architecture:
+
+- visual and copy choices — colours, spacing, layout, icons, component styling, wording — even when the whole app will follow them. How theming is built can clear the bar; which values it holds does not;
+- how one screen behaves — what a button does, where a dialog opens, which field is required;
+- a UI component or library picked inside a frontend whose framework is already settled — which dialog, toast, combobox or icon set;
+- a product rule — what a feature does, its defaults, which setting overrides which, who may do what — unless it fixes a quality attribute above. It is a requirement the code meets, not a choice of how to build it, and it belongs in the spec, the ticket or wherever the repository logs product decisions;
 - naming, formatting, lint and code style;
 - a bug fix that restores intended behaviour;
 - a refactor inside one module that changes no contract;
@@ -48,7 +53,9 @@ These fall below the bar, however long the discussion about them ran:
 - a one-off operational action;
 - applying a decision an existing ADR or convention already made. Following a rule is not making one.
 
-A conversation that clears the bar usually yields one record, sometimes two. If you count more than three, the bar has slipped: most of them are design choices inside one decision, and belong in its record.
+A change to a decision an existing record holds is held to the bar like any other. The older record does not lift it over: a record that should never have been written must not make its every later tweak a record too. When the change falls below, `Superseding` says what the older record gets instead.
+
+A conversation that clears the bar usually yields one record, sometimes two. If you count more than two, the bar has slipped: most of them are design choices inside one decision, and belong in its record.
 
 ### One decision, one record
 
@@ -145,23 +152,27 @@ Never invent an id or a URL. When the Atlassian MCP server is reachable — it a
 Write to `<adrRoot>/<name>.md`, creating the directory if it does not exist. Pick the name by this precedence; the first match wins.
 
 1. **The user gave a file name.** Use it exactly.
-2. **The directory already names its records by one pattern** — `0007-use-cas.md`, `adr-007-use-cas.md`. Follow it, number format included.
+2. **The directory already names its records by one pattern** — `0007-use-cas.md`, `adr-007-use-cas.md`. Follow its prefix and number format. The slug still follows the rule below, even where older records have long ones.
 3. **Otherwise** `ADR-<n>-<slug>.md`.
 
 `<n>` is one more than the highest number any record in the directory has ever had. Count deleted records too — `git log --format= --name-only --diff-filter=D -- <adrRoot>` lists them. A number is never reused, because another document may cite it.
 
-The title names the chosen approach and what it is for: "Content-addressable storage for file management", not "File storage". The ADR index lists each record by its title and status alone, and an agent about to make a design choice picks the records to open from it. A title that names only the topic makes it open the file to learn the decision, or skip a record it should have read. The slug is the title in kebab-case: `content-addressable-storage-for-file-management`.
+The title names the chosen approach and what it is for: "Content-addressable storage for file management", not "File storage". The ADR index lists each record by its title and status alone, and an agent about to make a design choice picks the records to open from it. A title that names only the topic makes it open the file to learn the decision, or skip a record it should have read.
+
+The file name is not the title. Its slug names the chosen approach alone, in two to four words of kebab-case and at most 30 characters: `content-addressable-storage`, so the file is `ADR-7-content-addressable-storage.md`. Never `ADR-7-files-are-identified-by-the-sha-256-of-their-content-so-each-is-stored-once-not-by-path.md`. People find a record by scanning the directory listing, and a long name wraps, gets cut off in the file tree, and reads like a sentence. The title and the index carry the rest. So the slug leaves out what the approach is for, the design choices, the rejected alternatives, and the words that only join others: `for`, `of`, `the`, `with`, `use`, `using`, `not`. Count the slug's characters before writing the file, and shorten it when it is over 30.
 
 If the directory keeps an index by hand — a `README.md` or `index.md` listing its records — add a line for the new record in the index's own format. Never edit the ADR index: see `The ADR index`.
 
 ## Superseding
 
-An accepted record is never edited. A decision that reverses or replaces an earlier one is a new record, and the old record changes in exactly one place.
+An accepted record is never edited. A decision that reverses or replaces an earlier one, and clears the bar, is a new record, and the old record changes in exactly one place.
 
 - **The new record** links the old one under `Supersedes`, or wherever the template records it, and its context says what changed since the old decision was made.
 - **The old record** gets the status `` `Superseded` by [ADR-<n>: <title>](<file>) ``. Nothing else in it changes.
 
 A decision that only builds on an earlier one supersedes nothing. Cite the earlier record under `Relates to`.
+
+When the change to an earlier record's decision falls below the bar, write no new record. The older record must still not read as current, since agents follow accepted records. So change its status, and nothing else, to `` `Superseded` by <link> ``, or to `` `Accepted`, partly superseded by <link> `` when the rest of it still stands. The link goes to whatever holds the change: the SDD section, the spec, the ticket or the design-log entry. Name the record in the report.
 
 A record this conversation wrote may still be revised in place when the conversation corrects it. Never create a `-v2` file.
 

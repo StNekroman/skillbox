@@ -10,8 +10,11 @@ what the skill does, when it fires, and what it needs.
 
 Usually nothing. When the conversation settled a decision that clears the bar, it writes one
 markdown file per decision under `paths.adrRoot` from
-[the repository config](references/config.md), named `ADR-<n>-<slug>.md`. A directory that already
-names its records another way — `0007-use-cas.md`, say — keeps its own pattern.
+[the repository config](references/config.md), named `ADR-<n>-<slug>.md`. The slug is two to four
+words naming the approach, at most 30 characters — `ADR-7-content-addressable-storage.md` — never
+the title as a sentence; the title inside the file, which the index lists, says the rest. A
+directory that already names its records another way — `0007-use-cas.md`, say — keeps its own
+prefix and numbering, but not long slugs.
 
 The shape comes from, in order: the repository's own template at `paths.adrTemplate`, the records
 already in the directory, or the built-in [template](references/adr-template.md). The built-in has
@@ -41,13 +44,20 @@ git-ignores the file, and, where the block is already in place, proposes its upd
 
 An ADR directory is useful only while every file in it matters, so the skill decides whether to
 write before it touches anything, including the config. A settled decision qualifies when it is
-costly to reverse, reaches past one component, sets a precedent, or fixes a quality attribute such
-as tenant isolation or data retention — and when a future engineer would plausibly ask "why didn't
-they just …?".
+costly to reverse, reaches past one component, sets a structural precedent, or fixes a quality
+attribute such as tenant isolation or data retention — and when a future engineer would plausibly
+ask "why didn't they just …?". A contract whose every consumer ships from the same repository is
+not costly to reverse, and when the skill is unsure whether a test holds, it does not.
 
-Colours, naming, bug fixes, local refactors, tunable values and the like never qualify, however
-long they were discussed. When nothing clears the bar the skill says so, names the closest
-candidates and why they fell short, and writes nothing. Insisting after that gets you the record.
+Colours, layout, a UI component or library inside an established frontend, product rules such as a
+feature's defaults or which setting overrides which, naming, bug fixes, local refactors, tunable
+values and the like never qualify, however long they were discussed and however many places will
+follow them. A change to something an existing record holds is held to the same bar: when it falls
+short, the older record is marked superseded, pointing at wherever the change is recorded, and no
+new record is written — so one record that should not exist does not breed more.
+
+When nothing clears the bar the skill says so, names the closest candidates and why they fell
+short, and writes nothing. Insisting after that gets you the record.
 
 ## What it never invents
 
@@ -61,7 +71,9 @@ rather than line — an accepted record is never edited, and a line number goes 
 
 ## When it fires
 
-When a design discussion has reached a decision worth keeping. It does not write tickets — that is
+When a conversation has settled how the system is built — where data lives, how components talk,
+what may depend on what, a contract others rely on. Not for UI or product choices, however much
+design discussion they took. It does not write tickets — that is
 [draft-ticket](../draft-ticket/README.md)'s job — but when a draft in the same conversation
 implements the decision, the draft's `References` gains a link to the record.
 
