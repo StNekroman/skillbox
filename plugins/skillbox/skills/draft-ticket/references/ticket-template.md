@@ -3,20 +3,39 @@
 The skeleton below is the shape. Copy it, fill what the research produced, and delete every other
 section. Angle brackets mark a placeholder; no angle bracket survives into a written ticket.
 
-Only four things are mandatory: the title, the field list, `## Risk if not implemented` and
-`## Implementation risk`. Every other section appears when there is something real to put in it and
-is deleted when there is not. Do not invent content to fill a heading.
+Only five things are mandatory: the title, the field list, `## Brief`, `## Risk if not implemented`
+and `## Implementation risk`. Every other section appears when there is something real to put in it
+and is deleted when there is not. Do not invent content to fill a heading.
+
+The `Blocked by` field is the one optional bullet in the field list. It appears exactly when
+`## Blocked by` does, and lists the same entries as short links, in the same order.
 
 Section order is fixed. Nothing is inserted between sections and nothing is reordered.
 
 ---
 
-# Ticket Draft — <one line: the defect as a statement, or the change as an imperative>
+# Ticket Draft — <one line: a bug's defect as today's behaviour; for anything else, the change as an imperative or the state it leaves>
 
 - **Type:** `<Bug / Feature / Chore / Spike>`
 - **Severity:** `<Critical / High / Medium / Low>`
 - **Complexity:** `<Small / Medium / Large / X-Large>`
 - **Repos:** `<repo>`, `<another repo, only when more than one must change>`
+- **Blocked by:** [<KEY>](<jira.site>/browse/<KEY>), [<draft file name, no .md>](<relative-path>.md), <an off-repo blocker, in a few words, with its owner>
+
+## Brief
+
+<Two to four plain sentences: what is wrong or missing today, what this ticket changes, and why it
+matters — who it hits, or what it unblocks. No file paths, no decision ids, no edge cases.>
+
+## Blocked by
+
+- [<KEY> — <issue summary>](<jira.site>/browse/<KEY>) — <what it has to provide before this one can start>
+- [<ticket title>](<relative-path>.md) — <same, for a draft that has no id yet>
+- <an off-repo blocker: another team's work, an infra change, an unmade decision — named, with its owner, no link>
+
+## Blocks
+
+- [<ticket title>](<relative-path>.md) — <what it cannot do until this one lands; a Jira id takes the browse-URL form instead>
 
 ## Steps to reproduce
 
@@ -63,6 +82,12 @@ fault from this section alone.>
 <Only when existing rows or a deployed contract have to change. Phases, in order, each one safe to
 stop after.>
 
+## Open questions
+
+### Q1 — <the question, as a question>
+
+<What is unclear, what each answer would mean for the work, and who decides.>
+
 ## Acceptance criteria
 
 - [ ] <a condition that is verifiably true when the ticket is done>
@@ -70,13 +95,13 @@ stop after.>
 
 ## Test matrix
 
-| Case | Expected |
-|---|---|
-| <the main path> | <outcome> |
-| <the boundary the mechanism turns on> | <outcome> |
-| <nothing to act on — no rows, no matches> | <no error, no request, or a no-op> |
-| <the operation runs twice> | <same state as running it once> |
-| <cross-tenant: another tenant owns the neighbouring row> | <never read, never written> |
+| Case                                                     | Expected                           |
+| -------------------------------------------------------- | ---------------------------------- |
+| <the main path>                                          | <outcome>                          |
+| <the boundary the mechanism turns on>                    | <outcome>                          |
+| <nothing to act on — no rows, no matches>                | <no error, no request, or a no-op> |
+| <the operation runs twice>                               | <same state as running it once>    |
+| <cross-tenant: another tenant owns the neighbouring row> | <never read, never written>        |
 
 ## Risk if not implemented
 
@@ -99,12 +124,6 @@ and lines.>
 
 <...>
 
-## Open questions
-
-### Q1 — <the question, as a question>
-
-<What is unclear, what each answer would mean for the work, and who decides.>
-
 ## Related tickets
 
 - [<KEY> — <issue summary>](<jira.site>/browse/<KEY>) — <parent of / child of / related; use this form whenever the ticket has a Jira id>
@@ -114,13 +133,3 @@ and lines.>
 
 - [<document title>](<relative path to a spec, ADR or tech doc>) — <what it decides>
 - <an external document, named, with whoever owns the current revision>
-
-## Blocked by
-
-- [<KEY> — <issue summary>](<jira.site>/browse/<KEY>) — <what it has to provide before this one can start>
-- [<ticket title>](<relative-path>.md) — <same, for a draft that has no id yet>
-- <an off-repo blocker: another team's work, an infra change, an unmade decision — named, with its owner, no link>
-
-## Blocks
-
-- [<ticket title>](<relative-path>.md) — <what it cannot do until this one lands; a Jira id takes the browse-URL form instead>

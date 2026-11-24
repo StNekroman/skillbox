@@ -2,7 +2,7 @@
 name: jira-push-ticket
 description: Create a Jira issue from a ticket draft file using the official Atlassian MCP server, optionally under a parent epic, then rewrite inbound references across the repository and rename the draft to its issue key. Use when a settled draft in the repository’s ticket-draft directory should become a real Jira issue; do not use to write the draft in the first place, and do not use to review or transition existing issues.
 metadata:
-  prompt-version: "2026-10-01.1"
+  prompt-version: "2026-11-24.1"
 ---
 
 # Push a Ticket Draft to Jira
@@ -114,6 +114,7 @@ only place a reader can learn what it is.
 | `Severity` | Becomes the Jira `priority`. Removed from the body |
 | `Complexity` | Stays in the body's field list |
 | `Repos` | Stays in the body's field list |
+| `Blocked by` | Removed from the body, whatever it names. Jira tracks dependencies as issue links, which show each blocker's status; a line in the description would not, and would go stale. The entries themselves come from the `Blocked by` section (see `Building the description` and Phase 3) |
 | `Issue` | Retired from the template. An older draft may still carry one; never send it. See `Stop if the draft already has an id` |
 
 Severity maps to priority by `jira.severityToPriority` in the config, which names the site’s own
@@ -305,12 +306,13 @@ reorganises the folder.
 | Shape in the source | Becomes |
 |---|---|
 | `[some phrase](bug-foo.md)` | `[some phrase](<jira.site>/browse/PROJ-458)` |
-| `[bug-foo.md](bug-foo.md)` | `[PROJ-458](<jira.site>/browse/PROJ-458)` |
+| `[bug-foo.md](bug-foo.md)` or `[bug-foo](bug-foo.md)` | `[PROJ-458](<jira.site>/browse/PROJ-458)` |
 | `[text](../auth/bug-foo.md)` | the same URL — the relative depth stops mattering |
 | `[text](bug-foo.md#a-heading)` | the same URL, anchor dropped; name the section in the text |
 
 The link text decides the first two rows. A descriptive phrase survives the move and should be kept
-as it is. A bare file name does not read as a link to an issue, so it becomes the key. Both forms
+as it is. A bare file name, with or without `.md`, does not read as a link to an issue, so it
+becomes the key — this is the form a sibling draft's `Blocked by` field uses. Both forms
 are correct in their place; the text you found decides which one you write.
 
 An anchor has no equivalent. Jira builds heading anchors differently and they are not stable across
@@ -367,7 +369,7 @@ anything.
 Check six things, and report any that fail rather than fixing them silently.
 
 - **The issue body.** Read it back with `getJiraIssue` and `responseContentFormat: "html"`. The
-  field list is a bullet list, not one line. `Acceptance criteria` is
+  field list is a bullet list, not one line, with no `Blocked by` bullet. `Acceptance criteria` is
   `<ul data-type="task-list">` with an `<input type="checkbox">` per item. Every `## ` heading in
   the draft has an `<h2>`. The parent is set, when one was asked for.
 - **The links exist and point the right way.** The same read with `view: "evidence"` returns

@@ -12,9 +12,10 @@ One markdown file per deliverable, under `paths.draftRoot` from
 [the repository config](references/config.md), named `<type>-<slug>.md` — or `<KEY>.md` once the
 ticket has a tracker id.
 
-The structure is fixed and mostly optional: only the title, the field list, `Risk if not
-implemented` and `Implementation risk` are mandatory. Every other section appears when the research
-produced something for it and is left out when it did not. An absent section is information; an
+The structure is fixed and mostly optional: only the title, the field list, `Brief`, `Risk if not
+implemented` and `Implementation risk` are mandatory. `Brief` is a few plain sentences under the
+field list that say what the ticket is about and what it wants. Every other section appears when
+the research produced something for it and is left out when it did not. An absent section is information; an
 invented one is a false claim a developer will act on.
 
 ## When it fires

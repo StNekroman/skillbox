@@ -2,7 +2,7 @@
 name: draft-ticket
 description: Write or update a ticket draft as a markdown file under the repository’s ticket-draft directory, using a fixed ticket structure. Use when chat research has settled enough to be flushed into one or more ticket files; do not use to create, edit, transition, or comment on items in an issue tracker.
 metadata:
-  prompt-version: "2026-10-11.1"
+  prompt-version: "2026-11-24.1"
 ---
 
 # Draft a Ticket
@@ -64,7 +64,11 @@ Pick the name by this precedence. First match wins.
 | `Chore` | `chore-split-limitador-dev-and-prod-config.md` |
 | `Spike` | `spike-measure-run-row-growth.md` |
 
-The slug names the problem, not the fix — `bug-notifications-survive-archive`, not `bug-add-clear-on-archive`. A fix changes during implementation; the problem does not.
+The slug is the title shortened, framed the same way (see `Title` under `Structure`):
+
+- A `Bug`'s slug names the defect, today's behaviour — `bug-notifications-survive-archive`, not `bug-add-clear-on-archive`. A fix changes during implementation; the defect does not.
+- A `Feature`'s or `Chore`'s slug names what the ticket delivers: the change (`chore-introduce-nestjs`) or the state it leaves (`feature-notification-read-state`). Never the gap it fills — `chore-http-layer-has-no-framework` says what is missing, not what comes.
+- A `Spike`'s slug names what it finds out — `spike-measure-run-row-growth`.
 
 - When an id arrives later, rename the file to `<ID>.md` and rewrite every reference to it as a browse URL. The two happen together, never separately: a rename on its own breaks every inbound link. The `jira-push-ticket` skill, in the `skillbox-jira` plugin, does both as one step.
 - Update an existing draft in place. Never create a `-v2` file. Ask before overwriting a file you have not read in this session.
@@ -96,7 +100,7 @@ When the Atlassian MCP server is reachable — it arrives with the `skillbox-jir
 
 Copy the skeleton in [the ticket template](references/ticket-template.md) and fill it. Keep the section order exactly as the template has it.
 
-**Four things are mandatory: the title, the field list, and the two risk sections at the bottom. Every other section is optional.**
+**Five things are mandatory: the title, the field list, the Brief, and the two risk sections at the bottom. Every other section is optional.**
 
 A section exists to carry something the research actually produced. When the research produced nothing for it, leave the section out. An absent section reads as "nothing to say here", which is useful information. An invented section is a false claim a developer will act on, and it costs them more than the gap would have.
 
@@ -108,6 +112,7 @@ The reverse mistake matters too. Omit a section because the ticket has nothing f
 |---|---|
 | `# Ticket Draft — <title>` | always |
 | field list | always |
+| `## Brief` | always |
 | `## Steps to reproduce` | reproduction is known — this block is all three sections, or none |
 | `## Actual result` | as above |
 | `## Expected result` | as above |
@@ -127,9 +132,46 @@ The reverse mistake matters too. Omit a section because the ticket has nothing f
 | `## Blocked by` | another ticket or decision has to land first |
 | `## Blocks` | another ticket waits on this one |
 
+### Title
+
+One line, after `Ticket Draft — `. It becomes the issue's summary when the draft is pushed.
+
+- A `Bug`'s title states the defect as today's behaviour: "Archived tasks keep their notifications unread".
+- A `Feature`'s, `Chore`'s or `Spike`'s title declares the change as an imperative, or the state it leaves: "Introduce NestJS as the API's HTTP layer", "Give a notification a read state". Not the gap it fills.
+- Name the deliverable at the level a reader would look it up by. The choices that support it — an adapter, a build tool, the order of the steps — go in `Scope`: "Introduce NestJS as the API's HTTP layer", not "Serve the API from a NestJS app on Fastify, built with SWC, with today's routes behind it".
+
+### Brief
+
+What the ticket is about and what it wants, for a reader who stops here. It sits directly under the field list.
+
+- Two to four sentences of prose. No list, no headings.
+- Say what is wrong or missing today, what this ticket changes, and why it matters — who it hits, or what it unblocks.
+- Write it for a teammate who does not work in this area. No file paths, no code, no decision or ADR ids, no edge cases, no list of the parts of the change. The sections below carry all of that.
+- It is not the title reworded. A bug's title names the defect and any other ticket's names the change; the Brief adds the other half and the reason.
+
+For a bug:
+
+```markdown
+## Brief
+
+Archiving a task leaves its notifications unread, so the badge counts items nobody can open. This
+ticket marks a task's notifications read when the task is archived. Until then users learn to
+ignore the badge.
+```
+
+For a chore:
+
+```markdown
+## Brief
+
+Dev and prod share one rate-limiter config, so a limit loosened for local testing ships to prod.
+This ticket splits it into one config per environment. Per-environment limits for the public API
+wait on it.
+```
+
 ### The reproduction block
 
-`Steps to reproduce`, `Actual result` and `Expected result` come first, directly under the field list, because they are what a developer reads to confirm they are looking at the right problem.
+`Steps to reproduce`, `Actual result` and `Expected result` open the body, after the Brief and any blocking relations, because they are what a developer reads to confirm they are looking at the right problem.
 
 The three are one block. Write all three or none.
 
@@ -145,6 +187,8 @@ If the ticket is a defect that nobody has reproduced yet, leave the block out an
 ### Why this exists
 
 The mechanism, in prose. What the code does today, cited by file and line, and why that produces the actual result.
+
+The Brief already says what the ticket is about. This section starts at the code; do not open it by restating the problem or the goal.
 
 A developer who has never opened this area should be able to find the fault from this section alone. When a ticket has a mechanism, this is the section worth spending effort on; it is also the one that goes stale fastest, so cite lines rather than paraphrasing logic.
 
@@ -225,6 +269,8 @@ Two directions of one relation, each in its own section, each present only when 
 
 One line per entry: the link, the title, and why it blocks. A bare link does not tell a planner whether the dependency is hard or merely convenient.
 
+`Blocked by` is repeated as short links in the field list, so a reader sees the dependency without scrolling. See `Fields`; the two always change together.
+
 ```markdown
 ## Blocked by
 
@@ -240,19 +286,20 @@ The first entry has a Jira id, the others do not. That is the only thing decidin
 
 - Link an entry by the rule in `Citing a ticket that is already in Jira`, as in `Related tickets`.
 - A blocker outside this repository — another team's work, an infrastructure change, a decision nobody has made — is still an entry. Name it and name who owns it, with no link.
-- **Write every relation into both files.** `Blocked by` here is `Blocks` there, and the reverse; `related` stays `related`, and `parent of` becomes `child of`. When the other ticket is a draft, add the reverse entry to its file even if you are not otherwise writing it: read it, add one line to the matching section — creating the section in its template position if it has none — and change nothing else. Write that line's reason from the other ticket's point of view.
+- **Write every relation into both files.** `Blocked by` here is `Blocks` there, and the reverse; `related` stays `related`, and `parent of` becomes `child of`. When the other ticket is a draft, add the reverse entry to its file even if you are not otherwise writing it: read it, add one line to the matching section — creating the section in its template position if it has none — and, when that section is `Blocked by`, the same entry to its `Blocked by` field, creating the field after `Repos` if it has none. Change nothing else. Write that line's reason from the other ticket's point of view.
 - A relation written on one side only is lost if that side is pushed first. `jira-push-ticket` creates a Jira link only from an entry naming an issue, so the link has to come from the draft pushed second — and that draft can only create it if it names the first.
 - When the other ticket already has a Jira id, write no reverse entry. It is not a draft any more, and a `<KEY>.md` file left for it is only a snapshot. The link is created from this side when this draft is pushed.
 - `Blocked by` is not `related`. If this ticket can ship first and still be correct, the other ticket belongs in `Related tickets`.
 
 ## Fields
 
-The fields sit directly under the title, as a bullet list with each value in code style:
+The fields sit directly under the title, as a bullet list with each value in code style — except `Blocked by`, whose values are links:
 
 - **Type:** `Feature`
 - **Severity:** `High`
 - **Complexity:** `Large`
 - **Repos:** `api`, `infra`
+- **Blocked by:** [PROJ-319](https://example.atlassian.net/browse/PROJ-319), [feature-notification-read-state](feature-notification-read-state.md)
 
 There is no `Issue` field. A draft that has a tracker id is named for it, so the file name is the only place the id lives and the two can never disagree. There is no status field either: a draft's state lives in its folder and in `Open questions`.
 
@@ -283,9 +330,17 @@ Use these values and no others. A free-form severity drifts within a week.
 this one has no fixed value set: name the repositories as your organization names them, and name
 only what changes.
 
-The field list is mandatory, so every bullet in it needs a real value. If you cannot pick one, say so in the report at the end and let the user decide — do not guess a severity to fill a bullet.
+**Blocked by** — the entries of the `## Blocked by` section on one line, comma separated, in the
+section's order, so a reader sees at a glance whether the ticket waits on something. It is a copy of
+the section, never written on its own: it appears exactly when the section does, and every edit to
+the section's entries makes the same edit here. Each entry is a link with the shortest text that
+names it — the Jira key for an issue, the file name without `.md` for a draft — and no reason; the
+reasons stay in the section. A blocker outside the repository has nothing to link: name it in a few
+words, with its owner.
 
-Keep the fields consistent with the body. `Severity` must match `Risk if not implemented`. `Complexity` must match `Repos` and any migration named in `Scope`. If they disagree, one of them is wrong; fix it before writing the file.
+The field list is mandatory, so every bullet in it needs a real value. If you cannot pick one, say so in the report at the end and let the user decide — do not guess a severity to fill a bullet. `Blocked by` is the one bullet left out when the ticket has no blocker.
+
+Keep the fields consistent with the body. `Blocked by` must list exactly the section's entries. `Severity` must match `Risk if not implemented`. `Complexity` must match `Repos` and any migration named in `Scope`. If they disagree, one of them is wrong; fix it before writing the file.
 
 ## Writing style
 
