@@ -1,4 +1,4 @@
-<!-- block-version: 2026-10-11.1. Bump it with every change to the block below: a repository whose
+<!-- block-version: 2026-11-25.1. Bump it with every change to the block below: a repository whose
 copy is older is then told to update it, and one whose copy is newer is left alone.
 
 The block to-sdd and to-kb keep in a repository's always-loaded agent instructions, and to-adr
@@ -58,6 +58,10 @@ what the name means, and the words not to use for it.
   superseded one only tells what was decided before. When the task needs what an accepted record
   rules out, ask the user before you go against it: reopening a decision is theirs to do, and
   `to-adr` records the new one. Never edit an accepted record.
+- **When the conversation settled a design choice other code will have to follow, invoke the
+  `to-adr` skill when the task is done.** It decides whether the choice deserves an ADR, shows the
+  user a summary of a few lines, and writes the record only on their yes. Write and change ADRs only
+  through `to-adr`.
 <!-- end if -->
 - **To find a rule or a fact no summary names, search the section headings** of the whole store:
   each names its approach, so `^#+ §[0-9.]+ .*(word|synonym)` finds sections in docs you would not

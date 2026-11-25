@@ -1,25 +1,26 @@
 ---
 name: to-adr
-description: Record the architecture decisions settled in the current conversation as ADR markdown files under the repository’s ADR directory — the decision, the alternatives weighed, why each lost, and the consequences. Writes nothing when the conversation settled nothing architecturally significant. Use when the conversation settled how the system is built — where data lives, how components talk, what may depend on what, a contract others rely on; do not use for visual, UI or copy choices, naming, tunable values, bug fixes, tickets, specs or meeting notes.
+description: Record the architecture decisions settled in the current conversation as ADR markdown files under the repository’s ADR directory — the decision, the alternatives weighed, why each lost, and the consequences. Shows a few-line summary of each first and writes only on the user’s yes; shows nothing when the conversation settled nothing architecturally significant. Use when the conversation settled how the system is built — where data lives, how components talk, what may depend on what, a contract others rely on; do not use for visual, UI or copy choices, naming, tunable values, bug fixes, tickets, specs or meeting notes.
 metadata:
-  prompt-version: "2026-11-19.1"
+  prompt-version: "2026-11-25.1"
 ---
 
 # Record an Architecture Decision
 
 Turn a decision this conversation settled into an Architecture Decision Record: a short file that tells an engineer, a year from now, what was decided, what else was on the table, and why it lost.
 
-The output is a markdown file in the repository's ADR directory. Most conversations produce none. An ADR directory is useful only while every file in it matters — one record about a button colour teaches its readers to skim the rest. So this skill's first job is deciding whether to write at all, and its default answer is no.
+The output is a markdown file in the repository's ADR directory. Most conversations produce none. An ADR directory is useful only while every file in it matters — one record about a button colour teaches its readers to skim the rest. So this skill's first job is deciding whether to write at all, and its default answer is no. When the answer is yes, the user still decides: they see a summary of a few lines, and nothing is written until they accept it.
 
 ## Order of work
 
 1. Find the candidate decisions in the conversation and hold each against `The bar`.
 2. If none clears it, stop and report. The repository is not touched and nothing is asked.
-3. Read the configuration, running its init if needed.
-4. Read the ADR directory: what is already recorded, how records are named, what shape they take. Drop any candidate that is already recorded; if that leaves none, stop and report.
-5. Write one record per decision, rewrite the ADR index, then report.
+3. If the configuration exists, read the title of every record in the ADR directory and drop any candidate already recorded. Do not run the init here. If that leaves none, stop and report.
+4. Show each remaining candidate as a summary and ask, as `Ask first` describes. Then stop until the user answers.
+5. For each candidate the user accepted: read the configuration, running its init if needed, and read the ADR directory — how records are named, what shape they take.
+6. Write one record per accepted decision, rewrite the ADR index, then report.
 
-The bar comes before the configuration on purpose. When nothing qualifies, the user must not be asked where to store a file that will never be written.
+The bar and the summary come before the init on purpose. The user must not be asked where to store a file that will never be written, or one they have not agreed to.
 
 ## The bar
 
@@ -63,13 +64,50 @@ A decision often arrives with several design choices — what identifies a file,
 
 ### When nothing clears the bar
 
-Write nothing. Reply in a few lines: that no ADR was written, then the closest candidates, each with the test it failed in one clause. When the conversation settled no decision at all, say that in one sentence.
+Write nothing and show no summary. When the user asked for an ADR — typed `/to-adr`, or asked in words — reply in a few lines: that no ADR was written, then the closest candidates, each with the test it failed in one clause. When the conversation settled no decision at all, say that in one sentence. When you invoked this skill on your own, at the end of a task, say nothing about ADRs.
 
-If the user reads that and still asks for a record, write it — it is their repository. The same holds for a decision the user names in the request: hold it to the bar, and when it falls below, say why and write it only once they confirm.
+If the user reads that and still asks for a record, show its summary — it is their repository — with `Bar` saying which test it fails: `Below the bar: one PR reverts it`. Their yes writes it. A decision the user names in the request is held to the bar the same way, and shown the same way when it falls below.
+
+## Ask first
+
+No file in the ADR directory is created or changed until the user has seen its summary and said yes. This holds whoever started the skill: a `/to-adr` the user typed asks for the summary, not yet for the file.
+
+For each candidate, write one fenced `text` block, then one line that asks:
+
+```text
+Content-addressable storage for file management
+Decision  Identify each file by SHA-256 of its content; store it once
+Why       Tenants upload the same files; retries must not duplicate
+Rejected  Path-based keys: duplicates on re-upload
+          Provider dedup: our provider doesn't offer it
+Cost      Every read resolves hash → path through a lookup
+Bar       Costly to reverse: data at rest
+```
+
+Write it? `yes` / `no` / or say what to change.
+
+- **The lines, in this order.** The title, unlabelled; then `Decision`, `Why`, `Rejected`, `Cost`, `Bar`. Add `Supersedes ADR-<m>` above `Bar` when the decision replaces a record. Pad the labels to one width, as above.
+- **Fragments, not sentences.** One line per field, under 80 characters; `Rejected` takes one line per alternative. Fewer words are better: the user is deciding whether to have the record, not reading it. A field that will not fit one line is carrying detail the record will hold.
+- **The title** is the record's title, as `File location and name` describes, with no number: the number is fixed when the file is written.
+- **`Why`** gives the conversation's reasons, as `Reasons` requires. When it gave none, ask on that line: `Why       ? — what decided it?`.
+- **`Rejected`** holds only what `Alternatives` allows: `<alternative>: <why it lost>`. An alternative named without a reason reads `<alternative>: lost why?`. Leave the line out when nothing else was weighed.
+- **`Cost`** is the main negative consequence. It may be derived, as `Consequences` says.
+- **`Bar`** names the test from `The bar` the decision clears, and the fact that makes it hold, in a few words.
+- **Several candidates** each get a block, numbered on the title line — `1. Content-addressable storage …` — and one question after the last: Which to write? e.g. `1 yes, 2 no`.
+- **An older record whose status alone would change**, as `Superseding` describes for a change below the bar, gets a block of its own: its file name and title, then `Status    Accepted → Superseded by <what holds the change>` and a `Why` line.
+
+Then stop: run no init and write no file in the turn that shows the summary.
+
+### The answer
+
+- **Yes** — write the record from the conversation and the summary as accepted. The record says more than the block — the context, each design choice, every consequence — and nothing the block contradicts.
+- **A correction or a filled `?`** — it is part of the conversation from then on: a reason the user gives is a reason the record may state. Write the record with it, and show no second summary unless the correction changes the decision itself rather than a line about it.
+- **No** — drop the candidate. A no holds for the rest of the conversation: do not show it again, reworded or merged into another, unless the user asks.
+- **Anything else** — the user moves on, or answers only part — writes nothing for the candidates the answer did not accept.
 
 ## Configuration
 
-Read `.skillbox/tickets.json` under the repository root. It supplies `paths.adrRoot`, the optional `paths.adrTemplate`, `adr.index` for the ADR index, and `jira.site` for citing issues.
+Read `.skillbox/tickets.json` under the repository root. It supplies `paths.adrRoot`, the optional `paths.adrTemplate`, `adr.index` for the ADR index, and `jira.site` for citing issues. Before the summary, only read it, and only when it exists; everything below, the init included, waits for a yes.
 
 If the file is missing, or it has no `paths.adrRoot` or no `adr.index`, run the init in [the configuration reference](references/config.md), then carry on with the request. If `paths.adrTemplate` is set but the file it names does not exist, stop and ask — never fall back to the built-in template in silence.
 
@@ -79,11 +117,11 @@ A directory the user names in the request wins for this run. When the init is ru
 
 ## Read the ADR directory
 
-List `paths.adrRoot` before writing, and read:
+List `paths.adrRoot` and read:
 
-- **Every record's title.** If a candidate is already recorded, do not record it again; name the record that holds it in the report. If a candidate reverses or replaces an earlier decision, its record supersedes that one — see `Superseding`.
-- **The most recent record in full**, to match its tone, depth and header format.
-- **Any record the new one builds on**, in full, so the two do not contradict each other.
+- **Every record's title**, before the summary when the configuration exists, after the yes when the init had to create it. If a candidate is already recorded, do not record it again; name the record that holds it in the report. If a candidate reverses or replaces an earlier decision, its record supersedes that one — see `Superseding`.
+- **The most recent record in full**, after the yes, to match its tone, depth and header format.
+- **Any record the new one builds on**, in full, so the two do not contradict each other. Read it before the summary when it exists, so the summary does not contradict it either.
 
 A template file or an index in the directory is not a record, and neither is the ADR index, `adr.index.path`.
 
@@ -112,11 +150,11 @@ Check every statement about how the system works today against the live code in 
 
 ### Reasons
 
-The reasons are the conversation's reasons. Record what actually decided the question, not a better argument you can build afterwards. If the conversation chose without saying why — or a summary kept the decision and lost the reason — ask before writing: one question, naming each decision whose reason is missing. A record with an invented reason is worse than no record, because it will be trusted.
+The reasons are the conversation's reasons. Record what actually decided the question, not a better argument you can build afterwards. If the conversation chose without saying why — or a summary of earlier turns kept the decision and lost the reason — ask before writing, on the `Why` line of the decision's summary. A record with an invented reason is worse than no record, because it will be trusted.
 
 ### Alternatives
 
-Record only what was actually weighed. Never add an option nobody raised to make the decision look deliberated — a fabricated rejected option is a record of reasoning that never happened. An alternative that was named but never given a reason for losing stays out of the file; list it in the report so the user can supply one.
+Record only what was actually weighed. Never add an option nobody raised to make the decision look deliberated — a fabricated rejected option is a record of reasoning that never happened. An alternative that was named but never given a reason for losing is asked about in the summary's `Rejected` line, and stays out of the file unless the answer supplies one.
 
 ### Consequences
 
@@ -134,6 +172,8 @@ A new record gets one of two values:
 | `Proposed` | The conversation settled on a recommendation that someone outside it still has to approve. Use it only when the user said so. |
 
 `Superseded` is written only on an older record, by `Superseding`. When the template or the house format names its statuses differently, use its nearest equivalents.
+
+The yes to a summary lets the record be written; it is not the outside approval `Proposed` waits for, and it does not choose the status.
 
 ## Citing other documents
 
@@ -172,7 +212,7 @@ An accepted record is never edited. A decision that reverses or replaces an earl
 
 A decision that only builds on an earlier one supersedes nothing. Cite the earlier record under `Relates to`.
 
-When the change to an earlier record's decision falls below the bar, write no new record. The older record must still not read as current, since agents follow accepted records. So change its status, and nothing else, to `` `Superseded` by <link> ``, or to `` `Accepted`, partly superseded by <link> `` when the rest of it still stands. The link goes to whatever holds the change: the SDD section, the spec, the ticket or the design-log entry. Name the record in the report.
+When the change to an earlier record's decision falls below the bar, write no new record. The older record must still not read as current, since agents follow accepted records. So, once the user says yes to its summary, change its status, and nothing else, to `` `Superseded` by <link> ``, or to `` `Accepted`, partly superseded by <link> `` when the rest of it still stands. The link goes to whatever holds the change: the SDD section, the spec, the ticket or the design-log entry. Name the record in the report.
 
 A record this conversation wrote may still be revised in place when the conversation corrects it. Never create a `-v2` file.
 
@@ -208,7 +248,9 @@ Report to the user:
 
 - each path written, as a clickable relative link — including an older record whose status changed, an index that gained a line, and a draft that gained a reference;
 - the status given to each new record;
-- alternatives left out for lack of a reason, as a short list they can answer in chat;
+- alternatives still left out for lack of a reason, as a short list they can answer in chat;
 - the candidates held below the bar, one clause each, so a wrong call can be corrected in one line.
+
+Leave out the candidates the user declined.
 
 Do not paste the record into chat. The user will open the file.

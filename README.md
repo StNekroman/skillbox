@@ -29,7 +29,7 @@ Drilling in:
 | [`skillbox:one-by-one`](plugins/skillbox/README.md#one-by-one)                              | Open questions come one at a time, explained until you can decide                   |
 | [`skillbox:prototype`](plugins/skillbox/README.md#prototype)                                | Several different designs of a page, flipped through in the browser from a floating panel |
 | [`skillbox:draft-ticket`](plugins/skillbox/skills/draft-ticket/README.md)                   | Settled research becomes one ticket file per deliverable                            |
-| [`skillbox:to-adr`](plugins/skillbox/skills/to-adr/README.md)                               | A settled architecture decision becomes an ADR; anything less, none                 |
+| [`skillbox:to-adr`](plugins/skillbox/skills/to-adr/README.md)                               | A settled decision becomes an ADR once you accept its summary; anything less, none  |
 | [`skillbox:to-glossary`](plugins/skillbox/skills/to-glossary/README.md)                     | A settled domain term enters the glossary, and every session is held to it          |
 | [`skillbox:to-sdd`](plugins/skillbox/skills/to-sdd/README.md)                               | The SDDs are made true again after a code change, or when one is found wrong        |
 | [`skillbox:to-kb`](plugins/skillbox/skills/to-kb/README.md)                                 | Research and outside facts worth keeping become knowledge-base pages, sources cited |

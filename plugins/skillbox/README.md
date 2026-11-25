@@ -19,7 +19,7 @@ prototype a page as several UI variants you flip through in the browser; and fin
 | `/skillbox:one-by-one`                          | command | Take the questions still open in the chat one at a time, each explained in depth with options, pros and cons |
 | `/skillbox:prototype`                           | command | Build structurally different UI variants of a page, switchable from a floating panel with a shortlist   |
 | [`draft-ticket`](skills/draft-ticket/README.md) | skill   | Writes one markdown file per deliverable, in a fixed ticket structure, every claim verified             |
-| [`to-adr`](skills/to-adr/README.md)             | skill   | Records a settled architecture decision as an ADR — and writes nothing when there is none               |
+| [`to-adr`](skills/to-adr/README.md)             | skill   | Records a settled architecture decision as an ADR once you accept its summary — none when there is none |
 | [`to-glossary`](skills/to-glossary/README.md)   | skill   | Records a settled domain term in the glossary, with the words not to use for it — and only what you settled |
 | [`to-sdd`](skills/to-sdd/README.md)             | skill   | After a code change, corrects or extends the SDDs it touched — and writes nothing below the bar         |
 | [`to-kb`](skills/to-kb/README.md)               | skill   | Adds research and outside facts to the knowledge base, each with its source — and only what you confirm |
@@ -187,9 +187,11 @@ The command runs only when you type it; an agent will not reach for it on its ow
 
 A decision the conversation settled becomes an architecture decision record under the ADR
 directory named in the same `.skillbox/tickets.json`: the decision, the alternatives weighed and
-why each lost, and what it costs. Most conversations settle nothing that deserves one, and then the
-skill writes nothing and says why — an ADR directory stays useful only while every record in it
-matters.
+why each lost, and what it costs — but only after you have seen a summary of a few lines and said
+yes, even when you typed `/to-adr` yourself. Most conversations settle nothing that deserves one,
+and then the skill writes nothing — an ADR directory stays useful only while every record in it
+matters. Because it asks first, the block in `CLAUDE.md` or `AGENTS.md` has agents run it whenever
+a task settled a design choice other code will follow.
 
 On first use it finds the ADR directory the repository already has, or asks where records should
 go. `paths.adrTemplate` points it at the repository's own ADR template instead of its built-in one.
